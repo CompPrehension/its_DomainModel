@@ -5,6 +5,7 @@ import its.model.definition.DomainModel
 import its.model.definition.compat.DomainDictionariesRDFBuilder
 import its.model.definition.loqi.DomainLoqiBuilder
 import its.model.definition.loqi.DomainLoqiWriter
+import its.model.definition.loqi.TreeLoqiBuilder
 import its.model.nodes.DecisionTree
 import its.model.nodes.xml.DecisionTreeXMLBuilder
 import its.model.nodes.xml.DecisionTreeXMLWriter
@@ -90,7 +91,7 @@ class DomainSolvingModel(
          */
         @JvmStatic
         fun collectTrees(directoryURL: URL): Map<String, DecisionTree> {
-            return DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.xml"))
+            val xmlMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.xml"))
                 .map { (fileUrl, regexMatch) ->
                     var (name) = regexMatch.destructured
                     if (name.startsWith("_")) {
@@ -99,6 +100,16 @@ class DomainSolvingModel(
                     name to DecisionTreeXMLBuilder.fromXMLFile(fileUrl.toURI().toString())
                 }
                 .toMap()
+            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.loqi"))
+                .map { (fileUrl, regexMatch) ->
+                    var (name) = regexMatch.destructured
+                    if (name.startsWith("_")) {
+                        name = name.substring(1)
+                    }
+                    name to TreeLoqiBuilder.buildTree(fileUrl)
+                }
+                .toMap()
+            return xmlMap + loqiMap
         }
 
         /**

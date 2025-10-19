@@ -1,10 +1,13 @@
 package its.model.definition.loqi
 
+import its.model.TypedVariable
 import its.model.definition.*
 import its.model.definition.LinkQuantifier.Companion.ANY_COUNT
 import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
 import its.model.definition.types.*
+import its.model.nodes.DecisionTree
+import its.model.nodes.DecisionTreeVarAssignment
 import org.antlr.v4.runtime.CharStreams
 import org.antlr.v4.runtime.CommonTokenStream
 import org.antlr.v4.runtime.tree.ParseTree
@@ -47,20 +50,9 @@ class DomainLoqiBuilder private constructor(
             tree.accept(builder)
 
             val domain = builder.domainModel
-            builder.domainOpAt { domain.validateAndThrowInvalid() }
+            domainOpAt { domain.validateAndThrowInvalid() }
             return domain
         }
-    }
-
-    private fun <T> domainOpAt(line: Int = -1, expr: Callable<T>): T {
-        val res: T
-        try {
-            res = expr.call()
-        } catch (e: DomainDefinitionException) {
-            if (line < 0) throw LoqiDomainBuildException(e.message ?: "", e)
-            else throw LoqiDomainBuildException(line, e.message ?: "", e)
-        }
-        return res
     }
 
     override fun visitClassDecl(ctx: ClassDeclContext) {

@@ -1,5 +1,7 @@
 grammar LoqiGrammar;
 
+fullTreeDecl: treeDecl EOF;
+
 fullExp : exp EOF;
 
 model : topDecl+ EOF
@@ -176,6 +178,83 @@ idList : id (',' id)* ','? ;
 
 id : ID ;
 
+//-------------ОПИСАНИЕ ДЕРЕВА-----------
+
+treeDecl : TREE id '(' treeVarDecls ')' thoughtBranch metadataSection?
+         ;
+
+thoughtBranch : '{' stmts '}';
+
+treeVarDecls : treeVarDecl (',' treeVarDecl)* ','?;
+
+treeVarDecl: id ':' type '=' exp
+           | id ':' type
+           ;
+
+typedVar: id ':' type;
+
+stmts : stmt+ ;
+
+stmt: concludeBranchResult ';'
+    | whileCycle ';'
+    | branchAggregation ';'
+    | cycleAggregation ';'
+    | findAction ';'
+    | question ';'
+    ;
+
+whileCycle: WHILE '(' exp ')' thoughtBranch;
+
+expBranches: branches
+           | OUT '(' exp ')' ELSE thoughtBranch // thoughtBranch is outcome, only for booleans
+           ;
+
+aggBranches: branches
+           | thoughtBranch OUT outcomeType // thoughtBranch is agg body
+           ;
+
+branchAggregation: AGG aggregation ':' aggBranches ;
+
+cycleAggregation: CYCLE aggregation '(' exp ')' WITH typedVar aggBranches ;
+
+findAction: VAR typedVar WITH '(' treeVarDecls ')' '=' exp expBranches?
+          | VAR typedVar '=' exp expBranches?
+          ;
+
+question: ASK '(' exp ')' expBranches
+        | ASK SWITCH '(' exp ')' expBranches
+        | ASK '(' exp ')' WITH TRIVIAL '[' exp ']' expBranches
+        ;
+
+branches: '{' branch* '}';
+
+branch: outcomeType '->' thoughtBranch ';'?
+      | exp '->' thoughtBranch ';'?
+      | exp '->' OUT ';'
+      | outcomeType '->' OUT ';'
+      ;
+
+outcomeType: CORRECT
+           | ERROR
+           | NONE
+           ;
+
+aggregation: AND
+           | OR
+           | MUTEX
+           | HYP
+           ;
+
+branchResult: TRUE
+            | CORRECT
+            | FALSE
+            | ERROR
+            ;
+
+concludeBranchResult: CONCLUDE ':' branchResult metadataSection?
+                    | CONCLUDE ':' branchResult WITH '(' exp ')' metadataSection?
+                    ;
+
 //-------------ЛЕКСЕР---------------
 
 //Литералы
@@ -221,6 +300,7 @@ OBJ : 'obj' ;
 ENUM : 'enum' ;
 PROP : 'prop' ;
 REL : 'rel' ;
+TREE: 'tree' ;
 
 VALUES : 'values' ;
 META : 'meta' ;
@@ -238,6 +318,13 @@ CLOSER : 'closer' ;
 FURTHER : 'further' ;
 
 VAR : 'var' ;
+WHILE : 'while' ;
+CYCLE : 'cycle' ;
+AGG : 'agg';
+ASK : 'ask';
+SWITCH : 'switch' ;
+TRIVIAL: 'trivial' ;
+
 
 INT_TYPE : 'int' ;
 DOUBLE_TYPE : 'double' ;
@@ -246,6 +333,15 @@ STRING_TYPE : 'string' ;
 
 TRUE : 'true' ;
 FALSE : 'false' ;
+NONE : 'none' ;
+
+HYP: 'hyp' ;
+MUTEX: 'mutex' ;
+OUT: 'out';
+
+CONCLUDE : 'conclude';
+CORRECT : 'correct' ;
+ERROR : 'error' ;
 
 EQ : '==' ;
 NOT_EQ : '!=' ;

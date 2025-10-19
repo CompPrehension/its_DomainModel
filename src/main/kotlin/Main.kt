@@ -1,8 +1,7 @@
 import its.model.DomainSolvingModel
 
-
 fun main(){
-    val dir = "..\\inputs\\input_examples_expressions_prod"
+    val dir = "D:\\MEGA\\IT\\Projects\\Git\\Indev\\render-meaning-tree\\domain"
     val model = DomainSolvingModel(
         dir,
         buildMethod = DomainSolvingModel.BuildMethod.LOQI
