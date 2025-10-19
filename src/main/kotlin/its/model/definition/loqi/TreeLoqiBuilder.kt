@@ -134,7 +134,7 @@ class TreeLoqiBuilder(
         if (ctx.exp() != null) {
             actionExp = visitExp(ctx.exp());
         }
-        result = BranchResultNode(parseBranchResult(ctx.branchResult().text), actionExp);
+        result = BranchResultNode(parseBranchResult(ctx.outcomeType().text), actionExp);
         result.fillMetadata(ctx.metadataSection())
         return result
     }
@@ -162,12 +162,20 @@ class TreeLoqiBuilder(
     }
 
     override fun visitWhileCycle(ctx: LoqiGrammarParser.WhileCycleContext): WhileCycleNode {
-        val whileCycle = WhileCycleNode(visitExp(ctx.exp()),
-            visitThoughtBranch(ctx.thoughtBranch()),
+        val branches = visitAggregationBranches(ctx.aggBranches(), BranchResult.NULL)
+
+        if (branches.bodyBranches.count() > 1 || branches.bodyBranches.count() == 0) {
+            throw LoqiDomainBuildException("Cycle must have only one required branch")
+        }
+
+        return WhileCycleNode(visitExp(ctx.exp()),
+            branches.bodyBranches[0],
             Outcomes(listOf())
-        )
-        outMap[whileCycle] = BranchResult.NULL;
-        return whileCycle
+        ).also {
+            if (branches.out != null) {
+                outMap[it] = branches.out as Any;
+            }
+        }
     }
 
     fun visitBranchResultOutcomes(list: List<LoqiGrammarParser.BranchContext>): Outcomes<BranchResult> {
@@ -199,11 +207,11 @@ class TreeLoqiBuilder(
         }
 
         val outcomes = visitExprOutcomes(ctx.branches().branch().filter { b ->
-            visit(b.exp()) !is DecisionTreeVarLiteral && b.thoughtBranch() != null
+            visitExp(b.exp()) !is DecisionTreeVarLiteral && b.thoughtBranch() != null
         })
 
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
-            visit(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
+            visitExp(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
         })
 
         val outBranch = ctx.branches().branch().filter { branchContext ->
@@ -325,7 +333,7 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Cycle must have only one required branch")
         }
 
-        val variable = visitAndGetTypedVar(ctx.typedVar());
+        val variable = visitAndGetTypedVar(ctx.typedVarLinear());
 
         return CycleAggregationNode(agg, expr, variable, listOf(),
             branches.bodyBranches[0], branches.outcomes).also {
@@ -336,6 +344,13 @@ class TreeLoqiBuilder(
     }
 
     fun visitAndGetTypedVar(ctx: LoqiGrammarParser.TypedVarContext): TypedVariable {
+        return TypedVariable(
+            ctx.type().text,
+            ctx.id().text
+        )
+    }
+
+    fun visitAndGetTypedVar(ctx: LoqiGrammarParser.TypedVarLinearContext): TypedVariable {
         return TypedVariable(
             ctx.type().text,
             ctx.id().text

@@ -193,6 +193,8 @@ treeVarDecl: id ':' type '=' exp
 
 typedVar: id ':' type;
 
+typedVarLinear: type id;
+
 stmts : stmt+ ;
 
 stmt: concludeBranchResult ';'
@@ -203,7 +205,7 @@ stmt: concludeBranchResult ';'
     | question ';'
     ;
 
-whileCycle: WHILE '(' exp ')' thoughtBranch;
+whileCycle: WHILE '(' exp ')' aggBranches;
 
 expBranches: branches
            | OUT '(' exp ')' ELSE thoughtBranch // thoughtBranch is outcome, only for booleans
@@ -215,7 +217,7 @@ aggBranches: branches
 
 branchAggregation: AGG aggregation ':' aggBranches ;
 
-cycleAggregation: CYCLE aggregation '(' exp ')' WITH typedVar aggBranches ;
+cycleAggregation: CYCLE aggregation '(' exp ')' WITH typedVarLinear aggBranches ;
 
 findAction: VAR typedVar WITH '(' treeVarDecls ')' '=' exp expBranches?
           | VAR typedVar '=' exp expBranches?
@@ -229,14 +231,15 @@ question: ASK '(' exp ')' expBranches
 branches: '{' branch* '}';
 
 branch: outcomeType '->' thoughtBranch ';'?
+      | outcomeType '->' OUT ';'
       | exp '->' thoughtBranch ';'?
       | exp '->' OUT ';'
-      | outcomeType '->' OUT ';'
       ;
 
 outcomeType: CORRECT
            | ERROR
-           | NONE
+           | BOOLEAN
+           | NULL
            ;
 
 aggregation: AND
@@ -245,14 +248,9 @@ aggregation: AND
            | HYP
            ;
 
-branchResult: TRUE
-            | CORRECT
-            | FALSE
-            | ERROR
-            ;
 
-concludeBranchResult: CONCLUDE ':' branchResult metadataSection?
-                    | CONCLUDE ':' branchResult WITH '(' exp ')' metadataSection?
+concludeBranchResult: CONCLUDE ':' outcomeType metadataSection?
+                    | CONCLUDE ':' outcomeType WITH '(' exp ')' metadataSection?
                     ;
 
 //-------------ЛЕКСЕР---------------
@@ -333,7 +331,7 @@ STRING_TYPE : 'string' ;
 
 TRUE : 'true' ;
 FALSE : 'false' ;
-NONE : 'none' ;
+NULL : 'null' ;
 
 HYP: 'hyp' ;
 MUTEX: 'mutex' ;
