@@ -1,6 +1,6 @@
 grammar LoqiGrammar;
 
-fullTreeDecl: treeDecl EOF;
+fullTreeDecl: treeDecl metaDecl* EOF;
 
 fullExp : exp EOF;
 
@@ -198,17 +198,17 @@ typedVarLinear: type id;
 stmts : stmt+ ;
 
 stmt: concludeBranchResult ';'
-    | whileCycle ';'
-    | branchAggregation ';'
-    | cycleAggregation ';'
-    | findAction ';'
-    | question ';'
+    | whileCycle (AS id)? ';'
+    | branchAggregation (AS id)? ';'
+    | cycleAggregation (AS id)? ';'
+    | findAction (AS id)? ';'
+    | question (AS id)? ';'
     ;
 
 whileCycle: WHILE '(' exp ')' aggBranches;
 
 expBranches: branches
-           | OUT '(' exp ')' ELSE thoughtBranch // thoughtBranch is outcome, only for booleans
+           | OUT exp ELSE thoughtBranch // thoughtBranch is outcome, only for booleans
            ;
 
 aggBranches: branches
@@ -252,6 +252,8 @@ aggregation: AND
 concludeBranchResult: CONCLUDE ':' outcomeType metadataSection?
                     | CONCLUDE ':' outcomeType WITH '(' exp ')' metadataSection?
                     ;
+
+metaDecl: META FOR id metadataSection;
 
 //-------------ЛЕКСЕР---------------
 

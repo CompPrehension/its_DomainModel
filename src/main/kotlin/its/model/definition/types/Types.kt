@@ -1,6 +1,13 @@
 package its.model.definition.types
 
 import its.model.definition.*
+import its.model.expressions.literals.BooleanLiteral
+import its.model.expressions.literals.ClassLiteral
+import its.model.expressions.literals.DoubleLiteral
+import its.model.expressions.literals.EnumLiteral
+import its.model.expressions.literals.IntegerLiteral
+import its.model.expressions.literals.ObjectLiteral
+import its.model.expressions.literals.StringLiteral
 import java.util.*
 import kotlin.reflect.KClass
 
@@ -69,13 +76,17 @@ sealed class Type<T : Any>(
         @JvmStatic
         fun of(value: Any): Type<*> {
             return when (value) {
-                is Boolean -> BooleanType
+                is Boolean, is BooleanLiteral -> BooleanType
                 is Int -> IntegerType(value)
+                is IntegerLiteral -> IntegerType()
                 is Double -> DoubleType(value)
-                is String -> StringType
+                is DoubleLiteral -> DoubleType()
+                is String, is StringLiteral -> StringType
                 is EnumValue -> EnumType(value.enumName)
+                is EnumLiteral -> EnumType(value.value.enumName)
                 is Clazz -> ClassType(value.className)
-                is Obj -> ObjectType.untyped() //FIXME?
+                is ClassLiteral -> ClassType(value.name)
+                is Obj, is ObjectLiteral -> ObjectType.untyped() //FIXME?
                 else -> AnyType
             }
         }

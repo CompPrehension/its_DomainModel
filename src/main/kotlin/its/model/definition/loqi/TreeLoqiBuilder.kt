@@ -48,6 +48,7 @@ import java.net.URL
 class TreeLoqiBuilder(
     private var decisionTree : DecisionTree?,
     private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf(),
+    private val aliases: MutableMap<String, DecisionTreeNode> = mutableMapOf(),
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
     // TODO: needs more refactoring, more debugging
@@ -112,20 +113,27 @@ class TreeLoqiBuilder(
 
     override fun visitStmt(ctx: LoqiGrammarParser.StmtContext): DecisionTreeNode {
         val child = ctx.getChild(0)
-        if (child is LoqiGrammarParser.ConcludeBranchResultContext) {
-            return domainOpAt(ctx.start.line) { visitConcludeBranchResult(child) }
+
+        val result = if (child is LoqiGrammarParser.ConcludeBranchResultContext) {
+            domainOpAt(ctx.start.line) { visitConcludeBranchResult(child) }
         } else if (child is LoqiGrammarParser.BranchAggregationContext) {
-            return domainOpAt(ctx.start.line) { visitBranchAggregation(child) }
+            domainOpAt(ctx.start.line) { visitBranchAggregation(child) }
         } else if (child is LoqiGrammarParser.CycleAggregationContext) {
-            return domainOpAt(ctx.start.line) { visitCycleAggregation(child) }
+            domainOpAt(ctx.start.line) { visitCycleAggregation(child) }
         } else if (child is LoqiGrammarParser.WhileCycleContext) {
-            return domainOpAt(ctx.start.line) { visitWhileCycle(child) }
+            domainOpAt(ctx.start.line) { visitWhileCycle(child) }
         } else if (child is LoqiGrammarParser.FindActionContext) {
-            return domainOpAt(ctx.start.line) { visitFindAction(child) }
+            domainOpAt(ctx.start.line) { visitFindAction(child) }
         } else if (child is LoqiGrammarParser.QuestionContext) {
-            return domainOpAt(ctx.start.line) { visitQuestion(child) }
+            domainOpAt(ctx.start.line) { visitQuestion(child) }
+        } else {
+            throw ThisShouldNotHappen()
         }
-        throw ThisShouldNotHappen()
+
+        if (ctx.AS() != null && ctx.id() != null) {
+            aliases[ctx.id().text] = result;
+        }
+        return result
     }
 
     override fun visitConcludeBranchResult(ctx: LoqiGrammarParser.ConcludeBranchResultContext): BranchResultNode {
@@ -187,9 +195,31 @@ class TreeLoqiBuilder(
 
     fun visitExprOutcomes(list: List<LoqiGrammarParser.BranchContext>): Outcomes<Operator> {
         return Outcomes(list.map { res ->
-            Outcome(visitExp(res.exp()),
+            val exp = if (res.exp() != null) visitExp(res.exp()) else visitAndObtainBool(res.exp(), res.outcomeType())
+            if (exp == null) {
+                throw ThisShouldNotHappen()
+            }
+            Outcome(exp,
                 visitThoughtBranch(res.thoughtBranch()).start)
         }.toMutableList())
+    }
+
+    /**
+     * Этот метод нужен для того, чтобы решить проблему пересечения outcomeType и exp в ветках (чтобы true/false однозначно стал BooleanLiteral)
+     */
+    fun visitAndObtainBool(exp: LoqiGrammarParser.ExpContext?, outcomeTypeCtx: LoqiGrammarParser.OutcomeTypeContext? ): Operator? {
+        if (exp != null) {
+            val exp = visitExp(exp)
+            if (exp is BooleanLiteral) {
+                return exp
+            }
+        } else if (outcomeTypeCtx != null) {
+            val res = parseBranchResult(outcomeTypeCtx.text);
+            if (res != BranchResult.NULL) {
+                return if (res == BranchResult.CORRECT) BooleanLiteral(true) else BooleanLiteral(false)
+            }
+        }
+        return null
     }
 
     fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext): BranchInfo<Operator> {
@@ -207,11 +237,13 @@ class TreeLoqiBuilder(
         }
 
         val outcomes = visitExprOutcomes(ctx.branches().branch().filter { b ->
-            visitExp(b.exp()) !is DecisionTreeVarLiteral && b.thoughtBranch() != null
+            b.exp() != null && (
+                    visitExp(b.exp()) !is DecisionTreeVarLiteral || visitAndObtainBool(b.exp(), b.outcomeType()) != null)
+                    && b.thoughtBranch() != null
         })
 
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
-            visitExp(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
+            b.exp() != null && visitExp(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
         })
 
         val outBranch = ctx.branches().branch().filter { branchContext ->
@@ -227,7 +259,17 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("You can redirect only one outcome branch, not thought branch");
         }
 
-        val outcomeOut = if (outBranch.isEmpty()) null else visitExp(outBranch[0].exp())
+        val outcomeOut = if (outBranch.isEmpty()) null else {
+            if (outBranch[0].exp() == null) {
+                visitAndObtainBool(outBranch[0].exp(), outBranch[0].outcomeType())
+            } else {
+                visitExp(outBranch[0].exp())
+            }
+        }
+
+        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
+            outcomes.add(Outcome(outcomeOut, OutNode()));
+        }
 
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
     }
@@ -268,7 +310,7 @@ class TreeLoqiBuilder(
 
         val outcomeOut = if (outBranch.isEmpty()) defaultOut else parseBranchResult(outBranch[0].outcomeType().text)
 
-        if (outcomes.filter { value -> value.key == outcomeOut}.none() && outcomeOut != null) {
+        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
             outcomes.add(Outcome(outcomeOut, OutNode()));
         }
 
@@ -279,10 +321,10 @@ class TreeLoqiBuilder(
         return list.map { branch ->
             val expr = branch.exp()?.let { visitExp(it) }
 
-            if (expr is DecisionTreeVarLiteral && expr.name == "_") {
+            if (expr is DecisionTreeVarLiteral) {
                 return@map visitThoughtBranch(branch.thoughtBranch())
             } else {
-                throw LoqiDomainBuildException("Thought branches must have identifier `_` as expression")
+                throw LoqiDomainBuildException("Thought branches must have any identifier (for example, `_`) as expression")
             }
         }
     }
@@ -361,7 +403,7 @@ class TreeLoqiBuilder(
         val expr = visitExp(ctx.exp(0));
         val branches = visitExpressionBranches(ctx.expBranches())
 
-        if (branches.bodyBranches.isEmpty()) {
+        if (!branches.bodyBranches.isEmpty()) {
             throw LoqiDomainBuildException("Question cannot have thought branches")
         }
 
@@ -371,7 +413,9 @@ class TreeLoqiBuilder(
 
         val trivExpr = if (ctx.exp(1) != null) visitExp(ctx.exp(1)) else null;
         var isSwitch = !ctx.getTokens(SWITCH).isEmpty();
-        return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr);
+        return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr).also {
+            outMap[it] = branches.out;
+        }
     }
 
     override fun visitFindAction(ctx: LoqiGrammarParser.FindActionContext): FindActionNode {
@@ -418,6 +462,23 @@ class TreeLoqiBuilder(
         }
     }
 
+    override fun visitFullTreeDecl(ctx: LoqiGrammarParser.FullTreeDeclContext): DecisionTree {
+        val tree = visitTreeDecl(ctx.treeDecl());
+        applyMetadataDecl(ctx.metaDecl());
+        return tree
+    }
+
+    private fun applyMetadataDecl(metaDecl: MutableList<LoqiGrammarParser.MetaDeclContext>) {
+        for (meta in metaDecl) {
+            val id : String = meta.id().text
+            if (id in aliases) {
+                aliases[id]?.fillMetadata(meta.metadataSection())
+            } else {
+                throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
+            }
+        }
+    }
+
     override fun visitTreeDecl(ctx: TreeDeclContext?): DecisionTree {
         val variables = ctx?.treeVarDecls()?.treeVarDecl()?.filter{variable ->
             variable.exp() == null
@@ -425,7 +486,7 @@ class TreeLoqiBuilder(
             variable.type().text,
             variable.id().text,
         )
-        } ?: emptyList();
+        } ?: emptyList()
 
         val varAssignments = ctx?.treeVarDecls()?.treeVarDecl()?.filter{variable ->
             variable.exp() != null
@@ -433,11 +494,12 @@ class TreeLoqiBuilder(
             variable.type().text,
             variable.id().text,
         ), visitExp(variable.exp()));
-        }} ?: emptyList();
+        }} ?: emptyList()
 
         decisionTree = DecisionTree(variables, varAssignments,
-            visitThoughtBranch(ctx?.thoughtBranch() ?: throw ThisShouldNotHappen()));
-        decisionTree?.fillMetadata(ctx.metadataSection());
+            visitThoughtBranch(ctx?.thoughtBranch() ?: throw ThisShouldNotHappen()))
+        decisionTree?.fillMetadata(ctx.metadataSection())
+
 
         return decisionTree as DecisionTree
     }
