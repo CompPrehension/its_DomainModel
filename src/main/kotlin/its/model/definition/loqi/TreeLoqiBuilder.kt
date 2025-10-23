@@ -95,16 +95,27 @@ class TreeLoqiBuilder(
         val first = visitStmt(stmts[0])
         var prev = first
         for (i in 1 until stmts.size) {
+            val newStmt = visitStmt(stmts[i]);
             if (prev in outMap && prev is LinkNode<*>) {
                 val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
                 if (outcome.count() != 1) {
                     throw ThisShouldNotHappen()
                 } else {
                     (prev as LinkNode<Any>).outcomes.remove(outcome[0])
-                    (prev as LinkNode<Any>).outcomes.add(Outcome(outMap[prev] as Any, visitStmt(stmts[i])))
+                    (prev as LinkNode<Any>).outcomes.add(Outcome(outMap[prev] as Any, newStmt))
                 }
             } else {
                 throw LoqiDomainBuildException("Statement can't be reached")
+            }
+            prev = newStmt;
+        }
+
+        if (prev in outMap && prev is LinkNode<*>) {
+            val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
+            if (outcome.count() != 1) {
+                throw ThisShouldNotHappen()
+            } else {
+                (prev as LinkNode<Any>).outcomes.remove(outcome[0])
             }
         }
 
@@ -131,6 +142,9 @@ class TreeLoqiBuilder(
         }
 
         if (ctx.AS() != null && ctx.id() != null) {
+            if (ctx.id().text in aliases) {
+                throw LoqiDomainBuildException("Metadata alias `${ctx.id().text}` is already used by another node")
+            }
             aliases[ctx.id().text] = result;
         }
         return result
@@ -237,9 +251,7 @@ class TreeLoqiBuilder(
         }
 
         val outcomes = visitExprOutcomes(ctx.branches().branch().filter { b ->
-            b.exp() != null && (
-                    visitExp(b.exp()) !is DecisionTreeVarLiteral || visitAndObtainBool(b.exp(), b.outcomeType()) != null)
-                    && b.thoughtBranch() != null
+            (visitAndObtainBool(b.exp(), b.outcomeType()) != null || visitExp(b.exp()) !is DecisionTreeVarLiteral) && b.thoughtBranch() != null
         })
 
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
@@ -285,7 +297,7 @@ class TreeLoqiBuilder(
                 Outcome(value, visitThoughtBranch(ctx.thoughtBranch()).start) }.toMutableList()
             outcomeRawList.add(Outcome(outcomeType, OutNode()))
 
-            return BranchInfo(outcomeType, listOf(), Outcomes(outcomeRawList))
+            return BranchInfo(outcomeType, listOf(visitThoughtBranch(ctx.thoughtBranch())), Outcomes(outcomeRawList))
         }
 
         val outcomes = visitBranchResultOutcomes(ctx.branches().branch().filter { b ->
@@ -457,7 +469,7 @@ class TreeLoqiBuilder(
                 if (branches.out != null) {
                     outMap[it] = (branches.out as BooleanLiteral).value;
                 } else {
-                    outMap[it] = false;
+                    outMap[it] = true;
                 }
         }
     }

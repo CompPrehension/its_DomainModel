@@ -215,7 +215,7 @@ aggBranches: branches
            | thoughtBranch OUT outcomeType // thoughtBranch is agg body
            ;
 
-branchAggregation: AGG aggregation ':' aggBranches ;
+branchAggregation: AGG aggregation aggBranches ;
 
 cycleAggregation: CYCLE aggregation '(' exp ')' WITH typedVarLinear aggBranches ;
 
