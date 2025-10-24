@@ -324,6 +324,7 @@ AGG : 'agg';
 ASK : 'ask';
 SWITCH : 'switch' ;
 TRIVIAL: 'trivial' ;
+TUPLE: 'tuple';
 
 
 INT_TYPE : 'int' ;
