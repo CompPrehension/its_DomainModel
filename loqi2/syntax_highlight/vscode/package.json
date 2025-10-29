@@ -1,0 +1,35 @@
+{
+  "name": "loqi-syntax",
+  "displayName": "Loqi Language Support",
+  "description": "Syntax highlighting for Loqi language",
+  "version": "1.0.1",
+  "publisher": "loqi",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "loqi",
+        "aliases": [
+          "Loqi",
+          "loqi"
+        ],
+        "extensions": [
+          ".loqi"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "loqi",
+        "scopeName": "source.loqi",
+        "path": "./syntaxes/loqi.tmLanguage.json"
+      }
+    ]
+  }
+}

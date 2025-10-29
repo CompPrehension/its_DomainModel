@@ -1,0 +1,32 @@
+{
+  "comments": {
+    "lineComment": "//",
+    "blockComment": ["/*", "*/"]
+  },
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["<", ">"]
+  ],
+  "autoClosingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["<", ">"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["<", ">"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(class|obj|enum|tree)\\s+|\\{\\s*$",
+    "decreaseIndentPattern": "^\\s*\\}"
+  }
+}

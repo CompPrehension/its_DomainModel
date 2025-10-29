@@ -1,0 +1,157 @@
+%YAML 1.2
+---
+name: Loqi
+file_extensions:
+  - loqi
+scope: source.loqi
+
+variables:
+  identifier: '[A-Za-z_][A-Za-z0-9_]*'
+  escaped_identifier: '`[^\s`]+`'
+
+contexts:
+  main:
+    - include: comments
+    - include: strings
+    - include: numbers
+    - include: keywords-declaration
+    - include: keywords-control
+    - include: keywords-operator
+    - include: types
+    - include: constants
+    - include: operators
+    - include: identifiers
+    - include: punctuation
+
+  comments:
+    - match: '/\*'
+      scope: punctuation.definition.comment.begin.loqi
+      push: block-comment
+    - match: '//'
+      scope: punctuation.definition.comment.loqi
+      push: line-comment
+
+  block-comment:
+    - meta_scope: comment.block.loqi
+    - match: '\*/'
+      scope: punctuation.definition.comment.end.loqi
+      pop: true
+
+  line-comment:
+    - meta_scope: comment.line.double-slash.loqi
+    - match: '$'
+      pop: true
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.loqi
+      push: triple-double-string
+    - match: "'''"
+      scope: punctuation.definition.string.begin.loqi
+      push: triple-single-string
+    - match: '"'
+      scope: punctuation.definition.string.begin.loqi
+      push: double-string
+    - match: "'"
+      scope: punctuation.definition.string.begin.loqi
+      push: single-string
+
+  triple-double-string:
+    - meta_scope: string.quoted.triple.loqi
+    - match: '"""'
+      scope: punctuation.definition.string.end.loqi
+      pop: true
+    - include: escape-sequences
+
+  triple-single-string:
+    - meta_scope: string.quoted.triple.loqi
+    - match: "'''"
+      scope: punctuation.definition.string.end.loqi
+      pop: true
+    - include: escape-sequences
+
+  double-string:
+    - meta_scope: string.quoted.double.loqi
+    - match: '"'
+      scope: punctuation.definition.string.end.loqi
+      pop: true
+    - match: '["\\\r\n]'
+      pop: true
+    - include: escape-sequences
+
+  single-string:
+    - meta_scope: string.quoted.single.loqi
+    - match: "'"
+      scope: punctuation.definition.string.end.loqi
+      pop: true
+    - match: "['\\r\n]"
+      pop: true
+    - include: escape-sequences
+
+  escape-sequences:
+    - match: '\\[btnfr"''\\]'
+      scope: constant.character.escape.loqi
+
+  numbers:
+    - match: '\b\d+\.\d+([eE][+-]?\d+)?[dD]?\b'
+      scope: constant.numeric.float.loqi
+    - match: '\b\d+[eE][+-]?\d+\b'
+      scope: constant.numeric.float.loqi
+    - match: '\b\d+[dD]\b'
+      scope: constant.numeric.integer.loqi
+    - match: '\b(0|[1-9]\d*)\b'
+      scope: constant.numeric.integer.loqi
+
+  keywords-declaration:
+    - match: '\b(class|obj|enum|tree|prop|rel|var|meta|values)\b'
+      scope: keyword.declaration.loqi
+
+  keywords-control:
+    - match: '\b(if|else|while|for|cycle|agg|ask|switch|tuple|with|trivial|conclude|out)\b'
+      scope: keyword.control.loqi
+
+  keywords-operator:
+    - match: '\b(is|as|and|or|not|find|findExtreme|forAny|forAll|among|compare)\b'
+      scope: keyword.operator.loqi
+
+  keywords-relationship:
+    - match: '\b(linear|partial|opposite|transitive|between|closer|further|to)\b'
+      scope: keyword.relationship.loqi
+
+  keywords-aggregation:
+    - match: '\b(and|or|mutex|hyp)\b'
+      scope: keyword.aggregation.loqi
+
+  types:
+    - match: '\b(int|double|bool|string)\b'
+      scope: storage.type.loqi
+
+  constants:
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.loqi
+    - match: '\b(null)\b'
+      scope: constant.language.null.loqi
+    - match: '\b(correct|error)\b'
+      scope: constant.language.outcome.loqi
+
+  operators:
+    - match: '(=|(\+)?=>|->|\\?)'
+      scope: keyword.operator.assignment.loqi
+    - match: '(==|!=|<=|>=|<|>|:)'
+      scope: keyword.operator.comparison.loqi
+    - match: '[;,]'
+      scope: punctuation.separator.loqi
+    - match: '[{}\[\]()]'
+      scope: punctuation.bracket.loqi
+
+  identifiers:
+    - match: '`[^\s`]+`'
+      scope: variable.other.escaped.loqi
+    - match: '\${{identifier}}'
+      scope: variable.other.loqi
+    - match: '{{identifier}}'
+      scope: variable.other.loqi
+
+  punctuation:
+    - match: '[\.\-<>]'
+      scope: punctuation.loqi
