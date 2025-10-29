@@ -87,6 +87,14 @@ class TreeLoqiBuilder(
         return ctx.accept(OperatorLoqiBuilder())
     }
 
+    private fun branchResultToBoolean(res: BranchResult): Boolean? {
+        return when (res) {
+            BranchResult.CORRECT -> true
+            BranchResult.ERROR -> false
+            BranchResult.NULL -> null
+        }
+    }
+
     override fun visitThoughtBranch(ctx: LoqiGrammarParser.ThoughtBranchContext): ThoughtBranch {
         if (ctx.stmts().stmt().isEmpty()) {
             throw LoqiDomainBuildException(ctx.stmts().start.line, "Thought branch is empty")
@@ -207,13 +215,13 @@ class TreeLoqiBuilder(
         }.toMutableList())
     }
 
-    fun visitExprOutcomes(list: List<LoqiGrammarParser.BranchContext>): Outcomes<Operator> {
+    fun visitExprOutcomes(list: List<LoqiGrammarParser.BranchContext>, castToBool: Boolean): Outcomes<Any> {
         return Outcomes(list.map { res ->
             val exp = if (res.exp() != null) visitExp(res.exp()) else visitAndObtainBool(res.exp(), res.outcomeType())
             if (exp == null) {
                 throw ThisShouldNotHappen()
             }
-            Outcome(exp,
+            Outcome(if (exp is BooleanLiteral && castToBool) exp.value else exp,
                 visitThoughtBranch(res.thoughtBranch()).start)
         }.toMutableList())
     }
@@ -236,23 +244,24 @@ class TreeLoqiBuilder(
         return null
     }
 
-    fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext): BranchInfo<Operator> {
+    fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext, castToBool: Boolean = false): BranchInfo<Any> {
         if (ctx.branches() == null) {
             val exp = visitExp(ctx.exp());
             if (exp !is BooleanLiteral) {
                 throw LoqiDomainBuildException("Out with else is supported with boolean results")
             }
             val bool = exp.value;
-            val opposite = if (bool) BooleanLiteral(false) else BooleanLiteral(true);
-            return BranchInfo(exp, listOf(), Outcomes(mutableListOf(
-                Outcome(opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
-                Outcome(BooleanLiteral(bool), OutNode()),
+            val opposite = !bool;
+
+            return BranchInfo(if (!castToBool) exp else bool, listOf(), Outcomes(mutableListOf(
+                Outcome(if (!castToBool) BooleanLiteral(opposite) else opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
+                Outcome(if (!castToBool) BooleanLiteral(bool) else bool, OutNode()),
             )))
         }
 
         val outcomes = visitExprOutcomes(ctx.branches().branch().filter { b ->
             (visitAndObtainBool(b.exp(), b.outcomeType()) != null || visitExp(b.exp()) !is DecisionTreeVarLiteral) && b.thoughtBranch() != null
-        })
+        }, true)
 
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
             b.exp() != null && visitExp(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
@@ -280,10 +289,10 @@ class TreeLoqiBuilder(
         }
 
         if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
-            outcomes.add(Outcome(outcomeOut, OutNode()));
+            outcomes.add(Outcome(if (outcomeOut is BooleanLiteral && castToBool) outcomeOut.value else outcomeOut, OutNode()));
         }
 
-        return BranchInfo(outcomeOut, thoughtBranches, outcomes)
+        return BranchInfo(if (outcomeOut is BooleanLiteral && castToBool) outcomeOut.value else outcomeOut, thoughtBranches, outcomes)
     }
 
     fun visitAggregationBranches(ctx: LoqiGrammarParser.AggBranchesContext, defaultOut: BranchResult? = null):
@@ -413,7 +422,7 @@ class TreeLoqiBuilder(
 
     override fun visitQuestion(ctx: LoqiGrammarParser.QuestionContext): QuestionNode {
         val expr = visitExp(ctx.exp(0));
-        val branches = visitExpressionBranches(ctx.expBranches())
+        val branches = visitExpressionBranches(ctx.expBranches(), true)
 
         if (!branches.bodyBranches.isEmpty()) {
             throw LoqiDomainBuildException("Question cannot have thought branches")
