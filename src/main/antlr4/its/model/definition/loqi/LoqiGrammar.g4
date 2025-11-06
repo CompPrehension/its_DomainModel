@@ -249,8 +249,8 @@ aggregation: AND
            ;
 
 
-concludeBranchResult: CONCLUDE ':' outcomeType metadataSection?
-                    | CONCLUDE ':' outcomeType WITH '(' exp ')' metadataSection?
+concludeBranchResult: CONCLUDE ':' outcomeType (metadataSection | AS id)?
+                    | CONCLUDE ':' outcomeType WITH '(' exp ')' (metadataSection | AS id)?
                     ;
 
 metaDecl: META FOR id metadataSection;

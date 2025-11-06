@@ -166,6 +166,12 @@ class TreeLoqiBuilder(
         }
         result = BranchResultNode(parseBranchResult(ctx.outcomeType().text), actionExp);
         result.fillMetadata(ctx.metadataSection())
+        if (ctx.id() != null) {
+            if (ctx.id().text in aliases) {
+                throw LoqiDomainBuildException("Metadata alias `${ctx.id().text}` is already used by another node")
+            }
+            aliases[ctx.id().text] = result;
+        }
         return result
     }
 
