@@ -70,6 +70,14 @@ class ObjectDef(
     val clazz: ClassDef
         get() = parentClass!!
 
+    fun getRelationshipLink(relationshipName: String): RelationshipLinkStatement {
+        return relationshipLinks.stream().filter { link -> link.relationshipName == relationshipName }
+            .findFirst()
+            .orElseThrow {
+                nonConforming("relationship link $relationshipName not found")
+            }
+    }
+
     /**
      * Является ли экземпляром класса
      *
