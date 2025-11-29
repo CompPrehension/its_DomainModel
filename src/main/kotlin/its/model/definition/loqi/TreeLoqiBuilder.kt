@@ -48,7 +48,7 @@ import java.net.URL
 class TreeLoqiBuilder(
     private var decisionTree : DecisionTree?,
     private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf(),
-    private val aliases: MutableMap<String, DecisionTreeNode> = mutableMapOf(),
+    private val aliases: MutableMap<String, MutableSet<DecisionTreeNode>> = mutableMapOf(),
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
     // TODO: needs more refactoring, more debugging
@@ -150,10 +150,10 @@ class TreeLoqiBuilder(
         }
 
         if (ctx.AS() != null && ctx.id() != null) {
-            if (ctx.id().text in aliases) {
-                throw LoqiDomainBuildException("Metadata alias `${ctx.id().text}` is already used by another node")
+            if (ctx.id().text !in aliases) {
+                aliases[ctx.id().text] = HashSet();
             }
-            aliases[ctx.id().text] = result;
+            aliases[ctx.id().text]?.add(result);
         }
         return result
     }
@@ -167,10 +167,10 @@ class TreeLoqiBuilder(
         result = BranchResultNode(parseBranchResult(ctx.outcomeType().text), actionExp);
         result.fillMetadata(ctx.metadataSection())
         if (ctx.id() != null) {
-            if (ctx.id().text in aliases) {
-                throw LoqiDomainBuildException("Metadata alias `${ctx.id().text}` is already used by another node")
+            if (ctx.id().text !in aliases) {
+                aliases[ctx.id().text] = HashSet();
             }
-            aliases[ctx.id().text] = result;
+            aliases[ctx.id().text]?.add(result);
         }
         return result
     }
@@ -499,7 +499,9 @@ class TreeLoqiBuilder(
         for (meta in metaDecl) {
             val id : String = meta.id().text
             if (id in aliases) {
-                aliases[id]?.fillMetadata(meta.metadataSection())
+                for (node in aliases[id]!!) {
+                    node.fillMetadata(meta.metadataSection())
+                }
             } else {
                 throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
             }
