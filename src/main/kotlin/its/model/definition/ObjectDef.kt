@@ -78,6 +78,10 @@ class ObjectDef(
             }
     }
 
+    fun hasRelationshipLink(relationshipName: String): Boolean {
+        return relationshipLinks.stream().anyMatch { link -> link.relationshipName == relationshipName };
+    }
+
     /**
      * Является ли экземпляром класса
      *
