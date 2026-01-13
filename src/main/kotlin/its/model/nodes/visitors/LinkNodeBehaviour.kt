@@ -15,4 +15,5 @@ interface LinkNodeBehaviour<out Info> {
     fun process(node: BranchAggregationNode): Info
     fun process(node: QuestionNode): Info
     fun processTupleQuestionNode(node: TupleQuestionNode): Info
+    fun process(node: ProcedureCallNode): Info
 }

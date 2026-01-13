@@ -7,6 +7,7 @@ import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
 import its.model.definition.build.DomainBuilderUtils
 import its.model.definition.loqi.OperatorLoqiBuilder
+import its.model.definition.loqi.tree.CallableProcedureDef
 import its.model.definition.types.Clazz
 import its.model.definition.types.EnumValue
 import its.model.definition.types.Obj
@@ -46,6 +47,7 @@ sealed class AbstractDecisionTreeXMLBuilder<T : DecisionTreeElement> : XMLBuilde
         const val NAME_ATTR = "name"
         const val TYPE_ATTR = "type"
         const val LOGICAL_OP_ATTR = "operator"
+        const val PROCEDURE_CLASS_ATTR = "procedure"
 
         const val ADDITIONAL_INFO_PREFIX = "_"
     }
@@ -337,4 +339,16 @@ object DecisionTreeNodeXMLBuilder : AbstractDecisionTreeXMLBuilder<DecisionTreeN
 
         return FindActionNode(mainAssignment, errors, secondaryAssignments, outcomes).collectMetadata(el)
     }
+
+    @BuildForTags(["ProcedureCallNode"])
+    @BuildingClass(ProcedureCallNode::class)
+    private fun buildProcedureCallNode(el: ElementBuildContext): ProcedureCallNode {
+        val exprs = el.getChildren("ExpressionArguments").map({
+            createBuildContext(it, Operator::class).getExpr()
+        }).toList()
+        val className = el.findAttribute(PROCEDURE_CLASS_ATTR)
+        val procedure = Class.forName(className).getConstructor().newInstance() as CallableProcedureDef
+        return ProcedureCallNode(procedure, exprs, el.getOutcomes(Boolean::class)).collectMetadata(el)
+    }
+
 }

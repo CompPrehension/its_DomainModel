@@ -1,6 +1,7 @@
 package its.model.nodes.visitors
 
 import its.model.nodes.BranchResultNode
+import its.model.nodes.ProcedureCallNode
 import its.model.nodes.ThoughtBranch
 
 /**

@@ -1,6 +1,9 @@
 grammar LoqiGrammar;
 
-fullTreeDecl: treeDecl metaDecl* EOF;
+fullTreeDecl: treeDeclHelpers* treeDecl treeDeclHelpers* EOF;
+
+treeDeclHelpers: metaDecl
+               ;
 
 fullExp : exp EOF;
 
@@ -203,6 +206,7 @@ stmt: concludeBranchResult ';'
     | cycleAggregation (AS id)? ';'
     | findAction (AS id)? ';'
     | question (AS id)? ';'
+    | callStmt ';'
     ;
 
 whileCycle: WHILE '(' exp ')' aggBranches;
@@ -228,6 +232,14 @@ question: ASK '(' exp ')' expBranches
         | ASK '(' exp ')' WITH TRIVIAL '[' exp ']' expBranches
         ;
 
+namespaceResolution: ID (':' ID)*
+                   ;
+
+callArgs: exp (',' exp)* (',' | ',' '*')? ;
+
+callStmt: namespaceResolution '(' (callArgs | '*') ')'
+        ;
+
 branches: '{' branch* '}';
 
 branch: outcomeType '->' thoughtBranch ';'?
@@ -247,7 +259,6 @@ aggregation: AND
            | MUTEX
            | HYP
            ;
-
 
 concludeBranchResult: CONCLUDE ':' outcomeType (metadataSection | AS id)?
                     | CONCLUDE ':' outcomeType WITH '(' exp ')' (metadataSection | AS id)?
@@ -325,7 +336,6 @@ ASK : 'ask';
 SWITCH : 'switch' ;
 TRIVIAL: 'trivial' ;
 TUPLE: 'tuple';
-
 
 INT_TYPE : 'int' ;
 DOUBLE_TYPE : 'double' ;

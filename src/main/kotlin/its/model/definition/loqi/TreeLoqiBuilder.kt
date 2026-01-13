@@ -1,9 +1,13 @@
 package its.model.definition.loqi
 
 import its.model.TypedVariable
+import its.model.definition.DomainUseException
+import its.model.definition.loqi.tree.CallableProcedureDef
 import its.model.definition.EnumValueRef
+import its.model.definition.loqi.tree.GlobalNamespace
 import its.model.definition.MetaData
 import its.model.definition.MetaOwner
+import its.model.definition.loqi.tree.Namespace
 import its.model.definition.ThisShouldNotHappen
 import its.model.definition.loqi.LoqiGrammarParser.EnumValueRefContext
 import its.model.definition.loqi.LoqiGrammarParser.ID
@@ -13,6 +17,10 @@ import its.model.definition.loqi.LoqiGrammarParser.SWITCH
 import its.model.definition.loqi.LoqiGrammarParser.TreeDeclContext
 import its.model.definition.loqi.LoqiGrammarParser.ValueContext
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
+import its.model.definition.loqi.tree.AssertPointDef
+import its.model.definition.loqi.tree.ProcedureArgument
+import its.model.definition.loqi.tree.DebugDumpPointDef
+import its.model.definition.loqi.tree.DebugPointDef
 import its.model.definition.types.BooleanType
 import its.model.definition.types.DoubleType
 import its.model.definition.types.EnumType
@@ -33,9 +41,10 @@ import its.model.nodes.DecisionTreeNode
 import its.model.nodes.DecisionTreeVarAssignment
 import its.model.nodes.FindActionNode
 import its.model.nodes.LinkNode
-import its.model.nodes.OutNode
+import its.model.nodes.DummyNode
 import its.model.nodes.Outcome
 import its.model.nodes.Outcomes
+import its.model.nodes.ProcedureCallNode
 import its.model.nodes.QuestionNode
 import its.model.nodes.ThoughtBranch
 import its.model.nodes.WhileCycleNode
@@ -44,12 +53,18 @@ import org.antlr.v4.runtime.CommonTokenStream
 import org.antlr.v4.runtime.tree.ParseTree
 import java.io.Reader
 import java.net.URL
+import kotlin.collections.mutableListOf
 
 class TreeLoqiBuilder(
-    private var decisionTree : DecisionTree?,
-    private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf(),
-    private val aliases: MutableMap<String, MutableSet<DecisionTreeNode>> = mutableMapOf(),
+    private var decisionTree : DecisionTree?
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
+
+    private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf()
+    private val aliases: MutableMap<String, MutableSet<DecisionTreeNode>> = mutableMapOf()
+    private val procedures: MutableMap<Namespace, List<CallableProcedureDef>> = mutableMapOf(
+        Pair(GlobalNamespace, mutableListOf()),
+        Pair(Namespace(GlobalNamespace, "debug"), listOf(AssertPointDef(), DebugDumpPointDef(), DebugPointDef()))
+    )
 
     // TODO: needs more refactoring, more debugging
 
@@ -95,6 +110,18 @@ class TreeLoqiBuilder(
         }
     }
 
+    override fun visitCallStmt(ctx: LoqiGrammarParser.CallStmtContext): DecisionTreeNode {
+        val procedure = resolveCallNamespace(ctx.namespaceResolution())
+        if (procedure == null) {
+            throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
+        } else {
+            var args = ctx.callArgs().exp().map {
+                visitExp(it)
+            }.toList()
+            return procedure.callNode(args, DummyNode())
+        }
+    }
+
     override fun visitThoughtBranch(ctx: LoqiGrammarParser.ThoughtBranchContext): ThoughtBranch {
         if (ctx.stmts().stmt().isEmpty()) {
             throw LoqiDomainBuildException(ctx.stmts().start.line, "Thought branch is empty")
@@ -104,7 +131,9 @@ class TreeLoqiBuilder(
         var prev = first
         for (i in 1 until stmts.size) {
             val newStmt = visitStmt(stmts[i]);
-            if (prev in outMap && prev is LinkNode<*>) {
+            if (prev is ProcedureCallNode && prev.next is DummyNode) {
+                prev.next = newStmt
+            } else if (prev in outMap && prev is LinkNode<*>) {
                 val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
                 if (outcome.count() != 1) {
                     throw ThisShouldNotHappen()
@@ -145,6 +174,8 @@ class TreeLoqiBuilder(
             domainOpAt(ctx.start.line) { visitFindAction(child) }
         } else if (child is LoqiGrammarParser.QuestionContext) {
             domainOpAt(ctx.start.line) { visitQuestion(child) }
+        } else if (child is LoqiGrammarParser.CallStmtContext) {
+            domainOpAt(ctx.start.line) { visitCallStmt(child) }
         } else {
             throw ThisShouldNotHappen()
         }
@@ -261,7 +292,7 @@ class TreeLoqiBuilder(
 
             return BranchInfo(if (!castToBool) exp else bool, listOf(), Outcomes(mutableListOf(
                 Outcome(if (!castToBool) BooleanLiteral(opposite) else opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
-                Outcome(if (!castToBool) BooleanLiteral(bool) else bool, OutNode()),
+                Outcome(if (!castToBool) BooleanLiteral(bool) else bool, DummyNode()),
             )))
         }
 
@@ -295,7 +326,7 @@ class TreeLoqiBuilder(
         }
 
         if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
-            outcomes.add(Outcome(if (outcomeOut is BooleanLiteral && castToBool) outcomeOut.value else outcomeOut, OutNode()));
+            outcomes.add(Outcome(if (outcomeOut is BooleanLiteral && castToBool) outcomeOut.value else outcomeOut, DummyNode()));
         }
 
         return BranchInfo(if (outcomeOut is BooleanLiteral && castToBool) outcomeOut.value else outcomeOut, thoughtBranches, outcomes)
@@ -310,7 +341,7 @@ class TreeLoqiBuilder(
 
             val outcomeRawList = values.filter { value -> value != outcomeType }.map { value ->
                 Outcome(value, visitThoughtBranch(ctx.thoughtBranch()).start) }.toMutableList()
-            outcomeRawList.add(Outcome(outcomeType, OutNode()))
+            outcomeRawList.add(Outcome(outcomeType, DummyNode()))
 
             return BranchInfo(outcomeType, listOf(visitThoughtBranch(ctx.thoughtBranch())), Outcomes(outcomeRawList))
         }
@@ -338,7 +369,7 @@ class TreeLoqiBuilder(
         val outcomeOut = if (outBranch.isEmpty()) defaultOut else parseBranchResult(outBranch[0].outcomeType().text)
 
         if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
-            outcomes.add(Outcome(outcomeOut, OutNode()));
+            outcomes.add(Outcome(outcomeOut, DummyNode()));
         }
 
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
@@ -462,7 +493,7 @@ class TreeLoqiBuilder(
 
         val branches = if (ctx.expBranches() == null) {
             BranchInfo<Operator>(BooleanLiteral(true), listOf(), Outcomes(mutableListOf(
-                Outcome(BooleanLiteral(true), OutNode())
+                Outcome(BooleanLiteral(true), DummyNode())
             )))
         } else {
             visitExpressionBranches(ctx.expBranches())
@@ -491,20 +522,45 @@ class TreeLoqiBuilder(
 
     override fun visitFullTreeDecl(ctx: LoqiGrammarParser.FullTreeDeclContext): DecisionTree {
         val tree = visitTreeDecl(ctx.treeDecl());
-        applyMetadataDecl(ctx.metaDecl());
+        val helpers = ctx.treeDeclHelpers();
+        helpers.forEach { helper ->
+            val child = helper.getChild(0)
+            if (child is LoqiGrammarParser.MetaDeclContext) {
+                applyMetadataDecl(child);
+            }
+        }
         return tree
     }
 
-    private fun applyMetadataDecl(metaDecl: MutableList<LoqiGrammarParser.MetaDeclContext>) {
-        for (meta in metaDecl) {
-            val id : String = meta.id().text
-            if (id in aliases) {
-                for (node in aliases[id]!!) {
-                    node.fillMetadata(meta.metadataSection())
+    fun resolveCallNamespace(id: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
+        val resolutions = id.ID().map{ i -> i.text}.toMutableList()
+        val procName = resolutions.removeLast()
+        if (resolutions.size == 1) {
+            return procedures.get(GlobalNamespace)
+                    ?.find { proc -> proc.name == resolutions[0] }
+        } else {
+            for (ns in procedures) {
+                val res = ns.key.getScopeResolution();
+                if (res.equals(resolutions)) {
+                    for (proc in ns.value) {
+                        if (proc.name == procName) {
+                            return proc
+                        }
+                    }
                 }
-            } else {
-                throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
             }
+        }
+        return null
+    }
+
+    fun applyMetadataDecl(meta: LoqiGrammarParser.MetaDeclContext) {
+        val id : String = meta.id().text
+        if (id in aliases) {
+            for (node in aliases[id]!!) {
+                node.fillMetadata(meta.metadataSection())
+            }
+        } else {
+            throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
         }
     }
 

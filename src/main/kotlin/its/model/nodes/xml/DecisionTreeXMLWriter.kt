@@ -52,6 +52,7 @@ class DecisionTreeXMLWriter(document: Document) : XMLWriter(document), DecisionT
         private const val ADDITIONAL_DECISION_TREE_VAR_DECL_TAG = "AdditionalVarDecl"
         private const val THOUGHT_BRANCH_TAG = "ThoughtBranch"
 
+        private const val PROCEDURE_CLASS_ATTR = "procedure"
         private const val VALUE_ATTR = "value"
         private const val NAME_ATTR = "name"
         private const val TYPE_ATTR = "type"
@@ -115,6 +116,19 @@ class DecisionTreeXMLWriter(document: Document) : XMLWriter(document), DecisionT
         return newElement(THOUGHT_BRANCH_TAG)
             .withChild(branch.start.createElement())
             .withMetadataOf(branch)
+    }
+
+    override fun process(node: ProcedureCallNode): Element {
+        var args = newElement("ExpressionArguments");
+        for (arg in node.arguments) {
+            args = args.withExpr(arg)
+        }
+
+        return newElement("ProcedureCallNode")
+            .withAttribute(PROCEDURE_CLASS_ATTR, node.procedure.javaClass.name)
+            .withChild(args)
+            .withOutcomes(node.outcomes)
+            .withMetadataOf(node)
     }
 
     private fun Element.withThoughtBranch(branch: ThoughtBranch): Element {
