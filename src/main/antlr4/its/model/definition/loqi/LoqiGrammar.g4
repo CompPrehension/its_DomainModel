@@ -240,9 +240,9 @@ tupleBranch: tuple '->' thoughtBranch;
 namespaceResolution: ID (':' ID)*
                    ;
 
-callArgs: exp (',' exp)* (',' | ',' '*')? ;
+callArgs: exp (',' exp)* ','? ;
 
-callStmt: namespaceResolution '(' (callArgs | '*') ')'
+callStmt: namespaceResolution '(' callArgs? ')'
         ;
 
 branches: '{' branch* '}';

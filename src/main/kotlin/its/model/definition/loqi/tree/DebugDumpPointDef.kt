@@ -6,5 +6,5 @@ import kotlin.collections.listOf
 class DebugDumpPointDef(): CallableProcedureDef(
     "dump",
     listOf(ProcedureArgument("comment", StringType)),
-    scopeCapture = false
+    scopeCapture = true
 )

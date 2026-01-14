@@ -126,9 +126,13 @@ class TreeLoqiBuilder(
         if (procedure == null) {
             throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
         } else {
-            var args = ctx.callArgs().exp().map {
-                visitExp(it)
-            }.toList()
+            var args = if (ctx.callArgs() != null && !ctx.callArgs().isEmpty) {
+                ctx.callArgs().exp().map {
+                    visitExp(it)
+                }.toList()
+            } else {
+                listOf()
+            }
             return procedure.callNode(args, DummyNode())
         }
     }
@@ -229,8 +233,10 @@ class TreeLoqiBuilder(
 
     fun parseBranchResult(expCtx: LoqiGrammarParser.ExpContext?, outcomeTypeCtx: LoqiGrammarParser.OutcomeTypeContext?): BranchResult? {
         if (expCtx != null) {
-            val exp = visitExp(expCtx).unwrap() as Boolean
-            return if (exp) BranchResult.CORRECT else BranchResult.ERROR
+            val exp = visitExp(expCtx).unwrap()
+            if (exp is Boolean) {
+                return if (exp) BranchResult.CORRECT else BranchResult.ERROR
+            }
         } else if (outcomeTypeCtx != null) {
             return parseBranchResult(outcomeTypeCtx.text)
         }
@@ -564,13 +570,14 @@ class TreeLoqiBuilder(
 
     fun resolveCallNamespace(id: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
         val resolutions = id.ID().map{ i -> i.text}.toMutableList()
+        val resolutionSize = resolutions.size
         val procName = resolutions.removeLast()
-        if (resolutions.size == 1) {
+        if (resolutionSize == 1) {
             return procedures.get(GlobalNamespace)
                     ?.find { proc -> proc.name == resolutions[0] }
         } else {
             for (ns in procedures) {
-                val res = ns.key.getScopeResolution();
+                val res = ns.key.getScopeResolution().filter { !it.isEmpty() }
                 if (res.equals(resolutions)) {
                     for (proc in ns.value) {
                         if (proc.name == procName) {
