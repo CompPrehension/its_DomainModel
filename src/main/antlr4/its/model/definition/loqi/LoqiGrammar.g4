@@ -230,7 +230,12 @@ findAction: VAR typedVar WITH '(' treeVarDecls ')' '=' exp expBranches?
 question: ASK '(' exp ')' expBranches
         | ASK SWITCH '(' exp ')' expBranches
         | ASK '(' exp ')' WITH TRIVIAL '[' exp ']' expBranches
+        | ASK TUPLE '(' exp (';' exp)* ')' '{' tupleBranch* '}'
         ;
+
+tuple: '(' exp (',' exp)* ','? ')';
+
+tupleBranch: tuple '->' thoughtBranch;
 
 namespaceResolution: ID (':' ID)*
                    ;
