@@ -233,7 +233,7 @@ question: ASK '(' exp ')' expBranches
         | ASK TUPLE '(' exp (';' exp)* ')' '{' tupleBranch* '}'
         ;
 
-tuple: '(' exp (',' exp)* ','? ')';
+tuple: '(' exp (';' exp)* ';'? ')';
 
 tupleBranch: tuple '->' thoughtBranch;
 
