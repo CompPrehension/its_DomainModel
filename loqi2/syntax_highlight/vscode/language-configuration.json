@@ -6,27 +6,27 @@
   "brackets": [
     ["{", "}"],
     ["[", "]"],
-    ["(", ")"],
-    ["<", ">"]
+    ["(", ")"]
   ],
   "autoClosingPairs": [
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"],
-    ["<", ">"],
-    ["\"", "\""],
-    ["'", "'"]
+    { "open": "{", "close": "}", "notIn": ["string", "comment"] },
+    { "open": "[", "close": "]", "notIn": ["string", "comment"] },
+    { "open": "(", "close": ")", "notIn": ["string", "comment"] },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "`", "close": "`", "notIn": ["comment"] }
   ],
   "surroundingPairs": [
     ["{", "}"],
     ["[", "]"],
     ["(", ")"],
-    ["<", ">"],
     ["\"", "\""],
-    ["'", "'"]
+    ["'", "'"],
+    ["`", "`"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^\\s*(class|obj|enum|tree)\\s+|\\{\\s*$",
-    "decreaseIndentPattern": "^\\s*\\}"
-  }
+    "increaseIndentPattern": "^((?!//).)*(\\{\\s*(?://.*)?$|\\[\\s*(?://.*)?$|\\(\\s*(?://.*)?$)",
+    "decreaseIndentPattern": "^\\s*(\\}|\\]|\\))\\s*[,;]?\\s*(?://.*)?$"
+  },
+  "wordPattern": "`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*|\\$[A-Za-z_][A-Za-z0-9_]*|-?(?:(?:\\d+\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?|\\d+[dD])"
 }

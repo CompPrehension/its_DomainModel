@@ -4,77 +4,73 @@
   "scopeName": "source.loqi",
   "fileTypes": ["loqi"],
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#numbers" },
-    { "include": "#keywords" },
-    { "include": "#types" },
-    { "include": "#operators" },
-    { "include": "#constants" },
-    { "include": "#class-declaration" },
-    { "include": "#identifiers" }
+    { "include": "#main" }
   ],
   "repository": {
+    "main": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#metaBlock" },
+        { "include": "#curlyBlock" },
+        { "include": "#parens" },
+        { "include": "#angleParams" },
+        { "include": "#declarations" },
+        { "include": "#qualifiedEntities" },
+        { "include": "#metadataKeys" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#constants" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#identifiers" }
+      ]
+    },
+
     "comments": {
       "patterns": [
         {
           "name": "comment.block.loqi",
           "begin": "/\\*",
-          "end": "\\*/",
-          "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.begin.loqi" }
-          },
-          "endCaptures": {
-            "0": { "name": "punctuation.definition.comment.end.loqi" }
-          }
+          "end": "\\*/"
         },
         {
           "name": "comment.line.double-slash.loqi",
-          "begin": "//",
-          "end": "$",
-          "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.loqi" }
-          }
+          "match": "//.*$"
         }
       ]
     },
+
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.triple.loqi",
+          "name": "string.quoted.triple.double.loqi",
           "begin": "\"\"\"",
           "end": "\"\"\"",
-          "patterns": [
-            { "include": "#escape-sequences" }
-          ]
+          "patterns": [{ "include": "#stringEscapes" }]
         },
         {
-          "name": "string.quoted.triple.loqi",
+          "name": "string.quoted.triple.single.loqi",
           "begin": "'''",
           "end": "'''",
-          "patterns": [
-            { "include": "#escape-sequences" }
-          ]
+          "patterns": [{ "include": "#stringEscapes" }]
         },
         {
           "name": "string.quoted.double.loqi",
           "begin": "\"",
           "end": "\"",
-          "patterns": [
-            { "include": "#escape-sequences" }
-          ]
+          "patterns": [{ "include": "#stringEscapes" }]
         },
         {
           "name": "string.quoted.single.loqi",
           "begin": "'",
           "end": "'",
-          "patterns": [
-            { "include": "#escape-sequences" }
-          ]
+          "patterns": [{ "include": "#stringEscapes" }]
         }
       ]
     },
-    "escape-sequences": {
+
+    "stringEscapes": {
       "patterns": [
         {
           "name": "constant.character.escape.loqi",
@@ -82,133 +78,261 @@
         }
       ]
     },
-    "numbers": {
-      "patterns": [
-        {
-          "name": "constant.numeric.float.loqi",
-          "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?[dD]?\\b"
-        },
-        {
-          "name": "constant.numeric.float.loqi",
-          "match": "\\b\\d+[eE][+-]?\\d+\\b"
-        },
-        {
-          "name": "constant.numeric.integer.loqi",
-          "match": "\\b\\d+[dD]\\b"
-        },
-        {
-          "name": "constant.numeric.integer.loqi",
-          "match": "\\b(0|[1-9]\\d*)\\b"
-        }
-      ]
-    },
+
     "keywords": {
       "patterns": [
         {
-          "name": "keyword.declaration.loqi",
-          "match": "\\b(class|obj|enum|tree|prop|rel|var|meta|values)\\b"
-        },
-        {
           "name": "keyword.control.loqi",
-          "match": "\\b(if|else|while|for|cycle|agg|ask|switch|tuple|trivial|with|conclude|out)\\b"
+          "match": "\\b(?:if|else|while|find|findExtreme|forAny|forAll|among|with|ask|switch|trivial|tuple|conclude|out|as)\\b"
         },
         {
-          "name": "keyword.operator.loqi",
-          "match": "\\b(is|as|and|or|not|find|findExtreme|forAny|forAll|among|compare)\\b"
+          "name": "keyword.declaration.loqi",
+          "match": "\\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var)\\b"
         },
         {
-          "name": "keyword.relationship.loqi",
-          "match": "\\b(linear|partial|opposite|transitive|between|closer|further|to)\\b"
+          "name": "keyword.operator.word.loqi",
+          "match": "\\b(?:and|or|not|is|to)\\b"
         },
         {
-          "name": "keyword.aggregation.loqi",
-          "match": "\\b(and|or|mutex|hyp)\\b"
-        },
-        {
-          "name": "keyword.for.loqi",
-          "match": "\\b(for)\\b"
+          "name": "storage.modifier.loqi",
+          "match": "\\b(?:linear|partial|opposite|transitive|between|closer|further|hyp|mutex)\\b"
         }
       ]
     },
+
     "types": {
       "patterns": [
         {
-          "name": "storage.type.loqi",
-          "match": "\\b(int|double|bool|string)\\b"
+          "name": "storage.type.primitive.loqi",
+          "match": "\\b(?:int|double|bool|string)\\b"
         }
       ]
     },
-    "operators": {
-      "patterns": [
-        {
-          "name": "keyword.operator.assignment.loqi",
-          "match": "=|\\+=>|=>|->|\\?"
-        },
-        {
-          "name": "keyword.operator.comparison.loqi",
-          "match": "==|!=|<=|>=|<|>|:"
-        },
-        {
-          "name": "keyword.operator.logical.loqi",
-          "match": "\\b(and|or|not)\\b"
-        },
-        {
-          "name": "punctuation.separator.loqi",
-          "match": "[;,]"
-        },
-        {
-          "name": "punctuation.bracket.loqi",
-          "match": "[{}\\[\\]()]"
-        }
-      ]
-    },
+
     "constants": {
       "patterns": [
         {
           "name": "constant.language.boolean.loqi",
-          "match": "\\b(true|false)\\b"
+          "match": "\\b(?:true|false)\\b"
         },
         {
           "name": "constant.language.null.loqi",
-          "match": "\\b(null)\\b"
+          "match": "\\bnull\\b"
         },
         {
           "name": "constant.language.outcome.loqi",
-          "match": "\\b(correct|error)\\b"
+          "match": "\\b(?:correct|error)\\b"
         }
       ]
     },
-    "class-declaration": {
+
+    "numbers": {
       "patterns": [
         {
-          "begin": "\\b(class)\\s+",
-          "end": "(?=\\s*[:{]|\\s*$)",
-          "beginCaptures": {
-            "1": { "name": "keyword.declaration.loqi" }
-          },
-          "patterns": [
-            {
-              "name": "entity.name.class.loqi",
-              "match": "[A-Za-z_][A-Za-z0-9_]*"
-            }
-          ]
+          "name": "constant.numeric.float.loqi",
+          "match": "(?<![A-Za-z0-9_`])(?:\\d*\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+|(?:0|[1-9]\\d*)[dD])(?![A-Za-z0-9_`])"
+        },
+        {
+          "name": "constant.numeric.integer.loqi",
+          "match": "(?<![A-Za-z0-9_`])(?:0|[1-9]\\d*)(?![A-Za-z0-9_`])"
         }
       ]
     },
+
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.loqi",
+          "match": "\\+=>|=>|->|==|!=|>=|<=|>|<|=|\\?|:|\\.|,|;"
+        }
+      ]
+    },
+
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.tpg.loqi",
+          "match": "\\b(tpg)\\s+(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.loqi" },
+            "2": { "name": "entity.name.type.loqi" }
+          }
+        },
+        {
+          "name": "meta.declaration.class.loqi",
+          "match": "\\b(class|enum|obj)\\s+(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.loqi" },
+            "2": { "name": "entity.name.type.loqi" }
+          }
+        },
+        {
+          "name": "meta.declaration.member.loqi",
+          "match": "\\b(prop|rel)\\s+(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.loqi" },
+            "2": { "name": "entity.name.function.loqi" }
+          }
+        },
+        {
+          "name": "meta.declaration.variable.loqi",
+          "match": "\\b(var)\\s+(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?::|=|,|$))",
+          "captures": {
+            "1": { "name": "keyword.declaration.loqi" },
+            "2": { "name": "variable.other.definition.loqi" }
+          }
+        }
+      ]
+    },
+
+    "qualifiedEntities": {
+      "patterns": [
+        {
+          "name": "constant.other.class-ref.loqi",
+          "match": "\\bclass\\s*:\\s*(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)"
+        },
+        {
+          "name": "constant.other.object-ref.loqi",
+          "match": "\\bobj\\s*:\\s*(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)"
+        },
+        {
+          "name": "constant.other.enum-value.loqi",
+          "match": "\\b(?:`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(?:`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)\\b"
+        }
+      ]
+    },
+
+    "metadataKeys": {
+      "patterns": [
+        {
+          "name": "entity.other.attribute-name.loqi",
+          "match": "\\b(?:`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*(?:\\.|=))"
+        }
+      ]
+    },
+
     "identifiers": {
       "patterns": [
         {
-          "name": "variable.other.loqi",
-          "match": "`[^\\s`]+`"
+          "name": "variable.other.readwrite.loqi",
+          "match": "`[^`\\s]+`|\\b[A-Za-z_][A-Za-z0-9_]*\\b"
         },
         {
-          "name": "variable.other.loqi",
+          "name": "variable.language.special.loqi",
           "match": "\\$[A-Za-z_][A-Za-z0-9_]*"
-        },
-        {
-          "name": "variable.other.loqi",
-          "match": "[A-Za-z_][A-Za-z0-9_]*"
         }
+      ]
+    },
+
+    "metaBlock": {
+      "name": "meta.annotation.section.loqi",
+      "begin": "\\[",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.meta.begin.loqi" }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.meta.end.loqi" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#metaBlock" },
+        { "include": "#curlyBlock" },
+        { "include": "#parens" },
+        { "include": "#angleParams" },
+        { "include": "#declarations" },
+        { "include": "#qualifiedEntities" },
+        { "include": "#metadataKeys" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#constants" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#identifiers" }
+      ]
+    },
+
+    "curlyBlock": {
+      "name": "meta.block.curly.loqi",
+      "begin": "\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.block.begin.loqi" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.block.end.loqi" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#metaBlock" },
+        { "include": "#curlyBlock" },
+        { "include": "#parens" },
+        { "include": "#angleParams" },
+        { "include": "#declarations" },
+        { "include": "#qualifiedEntities" },
+        { "include": "#metadataKeys" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#constants" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#identifiers" }
+      ]
+    },
+
+    "parens": {
+      "name": "meta.group.parens.loqi",
+      "begin": "\\(",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.parens.begin.loqi" }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.parens.end.loqi" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#metaBlock" },
+        { "include": "#curlyBlock" },
+        { "include": "#parens" },
+        { "include": "#angleParams" },
+        { "include": "#declarations" },
+        { "include": "#qualifiedEntities" },
+        { "include": "#metadataKeys" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#constants" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#identifiers" }
+      ]
+    },
+
+    "angleParams": {
+      "name": "meta.group.angle.loqi",
+      "begin": "(?<![<>=!\\-+])<(?!(?:=|<))",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.angle.begin.loqi" }
+      },
+      "end": "(?<!-)>(?![>=])",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.angle.end.loqi" }
+      },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#metaBlock" },
+        { "include": "#curlyBlock" },
+        { "include": "#parens" },
+        { "include": "#angleParams" },
+        { "include": "#qualifiedEntities" },
+        { "include": "#constants" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#identifiers" }
       ]
     }
   }

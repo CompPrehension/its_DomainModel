@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
     <key>name</key>
-    <string>Indentation Rules</string>
+    <string>Loqi Folding</string>
     <key>scope</key>
     <string>source.loqi</string>
     <key>settings</key>
     <dict>
-        <key>increaseIndentPattern</key>
-        <string>^\s*(class|obj|enum|tree)\s+|{\s*$</string>
-        <key>decreaseIndentPattern</key>
-        <string>^\s*}</string>
+        <key>foldingStartMarker</key>
+        <string>(\{\s*$|\[\s*$)</string>
+        <key>foldingStopMarker</key>
+        <string>(^\s*\}|^\s*\])</string>
     </dict>
 </dict>
 </plist>

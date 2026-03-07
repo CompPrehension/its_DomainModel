@@ -1,11 +1,11 @@
 {
   "name": "loqi-syntax",
   "displayName": "Loqi Language Support",
-  "description": "Syntax highlighting for Loqi language",
-  "version": "1.0.1",
-  "publisher": "loqi",
+  "description": "Syntax highlighting, bracket matching, and folding for the Loqi DSL.",
+  "version": "2.0.0",
+  "publisher": "local",
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages"
@@ -14,13 +14,8 @@
     "languages": [
       {
         "id": "loqi",
-        "aliases": [
-          "Loqi",
-          "loqi"
-        ],
-        "extensions": [
-          ".loqi"
-        ],
+        "aliases": ["Loqi", "loqi"],
+        "extensions": [".loqi"],
         "configuration": "./language-configuration.json"
       }
     ],
