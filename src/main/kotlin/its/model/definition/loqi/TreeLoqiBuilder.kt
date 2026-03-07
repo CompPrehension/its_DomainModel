@@ -2,69 +2,27 @@ package its.model.definition.loqi
 
 import its.model.TypedVariable
 import its.model.ValueTuple
-import its.model.definition.DomainUseException
-import its.model.definition.loqi.tree.CallableProcedureDef
-import its.model.definition.EnumValueRef
-import its.model.definition.loqi.tree.GlobalNamespace
-import its.model.definition.MetaData
-import its.model.definition.MetaOwner
-import its.model.definition.loqi.tree.Namespace
-import its.model.definition.ThisShouldNotHappen
-import its.model.definition.loqi.LoqiGrammarParser.EnumValueRefContext
-import its.model.definition.loqi.LoqiGrammarParser.ID
-import its.model.definition.loqi.LoqiGrammarParser.IdContext
-import its.model.definition.loqi.LoqiGrammarParser.MetadataSectionContext
-import its.model.definition.loqi.LoqiGrammarParser.SWITCH
-import its.model.definition.loqi.LoqiGrammarParser.TUPLE
-import its.model.definition.loqi.LoqiGrammarParser.TreeDeclContext
-import its.model.definition.loqi.LoqiGrammarParser.ValueContext
+import its.model.definition.*
+import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
-import its.model.definition.loqi.tree.AssertPointDef
-import its.model.definition.loqi.tree.ProcedureArgument
-import its.model.definition.loqi.tree.DebugDumpPointDef
-import its.model.definition.loqi.tree.DebugPointDef
-import its.model.definition.types.BooleanType
-import its.model.definition.types.DoubleType
-import its.model.definition.types.EnumType
-import its.model.definition.types.IntegerType
-import its.model.definition.types.StringType
-import its.model.definition.types.TypeAndValue
+import its.model.definition.loqi.tree.*
+import its.model.definition.types.*
 import its.model.expressions.Operator
-import its.model.expressions.literals.BooleanLiteral
 import its.model.expressions.literals.DecisionTreeVarLiteral
 import its.model.expressions.literals.ValueLiteral
-import its.model.nodes.AggregationMethod
-import its.model.nodes.BranchAggregationNode
-import its.model.nodes.BranchResult
-import its.model.nodes.BranchResultNode
-import its.model.nodes.CycleAggregationNode
-import its.model.nodes.DecisionTree
-import its.model.nodes.DecisionTreeElement
-import its.model.nodes.DecisionTreeNode
-import its.model.nodes.DecisionTreeVarAssignment
-import its.model.nodes.FindActionNode
-import its.model.nodes.LinkNode
-import its.model.nodes.DummyNode
-import its.model.nodes.Outcome
-import its.model.nodes.Outcomes
-import its.model.nodes.ProcedureCallNode
-import its.model.nodes.QuestionNode
-import its.model.nodes.ThoughtBranch
-import its.model.nodes.TupleQuestionNode
-import its.model.nodes.WhileCycleNode
+import its.model.nodes.*
 import org.antlr.v4.runtime.CharStreams
 import org.antlr.v4.runtime.CommonTokenStream
 import org.antlr.v4.runtime.tree.ParseTree
 import java.io.Reader
 import java.net.URL
-import kotlin.collections.mutableListOf
 
 class TreeLoqiBuilder(
     private var decisionTree : DecisionTree?
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
     private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf()
-    private val aliases: MutableMap<String, MutableSet<DecisionTreeNode>> = mutableMapOf()
+    private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
     private val procedures: MutableMap<Namespace, List<CallableProcedureDef>> = mutableMapOf(
         Pair(GlobalNamespace, mutableListOf()),
         Pair(Namespace(GlobalNamespace, "debug"), listOf(AssertPointDef(), DebugDumpPointDef(), DebugPointDef()))
@@ -154,7 +112,14 @@ class TreeLoqiBuilder(
                     throw ThisShouldNotHappen()
                 } else {
                     prev.outcomes.remove(outcome[0])
-                    prev.outcomes.add(Outcome(outMap[prev] as Any, newStmt))
+                    prev.outcomes.add(Outcome(outMap[prev] as Any, newStmt)
+                        .also {checkResultReachability(it)}
+                        .also {
+                            val alias = findAlias(outcome[0])
+                            aliases[alias]?.remove(outcome[0])
+                            aliases[alias]?.add(it)
+                        }
+                    )
                 }
             } else {
                 throw LoqiDomainBuildException("Statement can't be reached")
@@ -168,10 +133,10 @@ class TreeLoqiBuilder(
                 throw ThisShouldNotHappen()
             } else {
                 prev.outcomes.remove(outcome[0])
+                if (prev !is BranchAggregationNode) checkResultReachability(outcome[0], true) // так как Branch Aggregation Node может завершать ветвь
             }
         }
-
-        return ThoughtBranch(first);
+        return ThoughtBranch(first).also {checkResultReachability(it)}
     }
 
     override fun visitStmt(ctx: LoqiGrammarParser.StmtContext): DecisionTreeNode {
@@ -262,8 +227,10 @@ class TreeLoqiBuilder(
 
     fun visitBranchResultOutcomes(list: List<LoqiGrammarParser.BranchContext>): Outcomes<BranchResult> {
         return Outcomes(list.map { res ->
-            Outcome(parseBranchResult(res.exp(), res.outcomeType()) as BranchResult,
-                visitThoughtBranch(res.thoughtBranch()).start)
+            Outcome(
+                parseBranchResult(res.exp(), res.outcomeType()) as BranchResult,
+                visitThoughtBranch(res.thoughtBranch()).start
+            ).also { metaAliasForBranch(res, it) }
         }.toMutableList())
     }
 
@@ -274,7 +241,7 @@ class TreeLoqiBuilder(
                 throw ThisShouldNotHappen()
             }
             Outcome(exp,
-                visitThoughtBranch(res.thoughtBranch()).start)
+                visitThoughtBranch(res.thoughtBranch()).start).also { metaAliasForBranch(res, it)}
         }.toMutableList())
     }
 
@@ -295,7 +262,7 @@ class TreeLoqiBuilder(
         return null
     }
 
-    fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext): BranchInfo<Any> {
+    fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext): BranchInfo<*> {
         if (ctx.branches() == null) {
             val exp = visitExp(ctx.exp()).unwrap();
             if (exp !is Boolean) {
@@ -305,7 +272,7 @@ class TreeLoqiBuilder(
 
             return BranchInfo(exp, listOf(), Outcomes(mutableListOf(
                 Outcome(opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
-                Outcome(exp, DummyNode()),
+                Outcome(exp, DummyNode()).also {metaAliasForOut(ctx.out(), it)},
             )))
         }
 
@@ -339,9 +306,10 @@ class TreeLoqiBuilder(
         }
 
         if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
-            outcomes.add(Outcome(outcomeOut, DummyNode()));
+            outcomes.add(Outcome(outcomeOut, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
         }
-
+        
+        outcomes.forEach {checkResultReachability(it)}
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
     }
 
@@ -354,7 +322,7 @@ class TreeLoqiBuilder(
 
             val outcomeRawList = values.filter { value -> value != outcomeType }.map { value ->
                 Outcome(value, visitThoughtBranch(ctx.thoughtBranch()).start) }.toMutableList()
-            outcomeRawList.add(Outcome(outcomeType, DummyNode()))
+            outcomeRawList.add(Outcome(outcomeType, DummyNode()).also{metaAliasForOut(ctx.out(), it)})
 
             return BranchInfo(outcomeType, listOf(visitThoughtBranch(ctx.thoughtBranch())), Outcomes(outcomeRawList))
         }
@@ -382,9 +350,10 @@ class TreeLoqiBuilder(
         val outcomeOut = if (outBranch.isEmpty()) defaultOut else parseBranchResult(outBranch[0].outcomeType().text)
 
         if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
-            outcomes.add(Outcome(outcomeOut, DummyNode()));
+            outcomes.add(Outcome(outcomeOut, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
         }
 
+        outcomes.forEach {checkResultReachability(it)}
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
     }
 
@@ -393,7 +362,8 @@ class TreeLoqiBuilder(
             val expr = branch.exp()?.let { visitExp(it) }
 
             if (expr is DecisionTreeVarLiteral) {
-                return@map visitThoughtBranch(branch.thoughtBranch())
+                val result = visitThoughtBranch(branch.thoughtBranch()).also { metaAliasForBranch(branch, it)}
+                return@map result
             } else {
                 throw LoqiDomainBuildException("Thought branches must have any identifier (for example, `_`) as expression")
             }
@@ -477,11 +447,12 @@ class TreeLoqiBuilder(
         val branches = Outcomes(ctx.tupleBranch().map {
             val tuple = parseTuple(it.tuple())
             val thoughtBranch = visitThoughtBranch(it.thoughtBranch())
-            Outcome(tuple, thoughtBranch.start)
+            Outcome(tuple, thoughtBranch.start).also { obj -> metaAliasForBranch(it, obj)}
         })
         if (branches.size != questions.size) {
             throw LoqiDomainBuildException("Branch size doesn't match with questions in TupleQuestionNode")
         }
+        branches.forEach { checkResultReachability(it) }
         return TupleQuestionNode(questions, branches)
     }
 
@@ -507,7 +478,7 @@ class TreeLoqiBuilder(
 
         val trivExpr = if (ctx.exp(1) != null) visitExp(ctx.exp(1)) else null;
         var isSwitch = !ctx.getTokens(SWITCH).isEmpty();
-        return QuestionNode(expr, branches.outcomes, isSwitch,trivExpr).also {
+        return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr).also {
             outMap[it] = branches.out;
         }
     }
@@ -676,5 +647,121 @@ class TreeLoqiBuilder(
     }
 
     private fun EnumValueRefContext.getRef() = EnumValueRef(id(0).getName(), id(1).getName())
+
+    private fun checkResultReachability(node: DecisionTreeNode, strict: Boolean): Boolean {
+        val visiting = HashSet<DecisionTreeNode>()
+        val ok = checkReachabilityInternal(node, visiting, strict)
+        if (!ok) {
+            throw LoqiDomainBuildException(
+                "Decision tree path does not end with BranchResultNode starting from ${node.description}"
+            )
+        }
+        return true
+    }
+
+    private fun checkResultReachability(branch: ThoughtBranch, strict: Boolean = false): Boolean {
+        val visiting = HashSet<DecisionTreeNode>()
+        val ok = checkReachabilityInternal(branch.start, visiting, strict)
+        if (!ok) {
+            throw LoqiDomainBuildException(
+                "ThoughtBranch does not end with BranchResultNode starting from ${branch.start.description}"
+            )
+        }
+        return true
+    }
+
+    private fun <V> checkResultReachability(outcome: Outcome<V>, strict: Boolean = false): Boolean {
+        val visiting = HashSet<DecisionTreeNode>()
+        val ok = checkReachabilityInternal(outcome.node, visiting, strict)
+        if (!ok) {
+            throw LoqiDomainBuildException(
+                "Outcome (key=${outcome.key}) does not end with BranchResultNode starting from ${outcome.node.description}"
+            )
+        }
+        return true
+    }
+
+    private fun checkReachabilityInternal(node: DecisionTreeNode, visiting: MutableSet<DecisionTreeNode>, strict: Boolean): Boolean {
+        if (node is BranchResultNode || (node is DummyNode && !strict)) {
+            return true
+        }
+        if (!visiting.add(node)) {
+            return false
+        }
+
+        try {
+            when (node) {
+                is CycleAggregationNode -> {
+                    if (!checkReachabilityInternal(node.thoughtBranch.start, visiting, strict)) {
+                        throw LoqiDomainBuildException("ThoughtBranch in ${node.description} does not end with BranchResultNode")
+                    }
+                }
+                is BranchAggregationNode -> {
+                    node.thoughtBranches.forEachIndexed { index, branch ->
+                        if (!checkReachabilityInternal(branch.start, visiting, strict)) {
+                            throw LoqiDomainBuildException(
+                                "ThoughtBranch[$index] in ${node.description} does not end with BranchResultNode"
+                            )
+                        }
+                    }
+                }
+                is WhileCycleNode -> {
+                    if (!checkReachabilityInternal(node.thoughtBranch.start, visiting, strict)) {
+                        throw LoqiDomainBuildException("ThoughtBranch in ${node.description} does not end with BranchResultNode")
+                    }
+                }
+
+                else -> {}
+            }
+
+            if (node is LinkNode<*>) {
+                node.outcomes.forEachIndexed { index, outcome ->
+                    if (!checkReachabilityInternal(outcome.node, visiting, strict)) {
+                        throw LoqiDomainBuildException(
+                            "Outcome[$index] (key=${outcome.key}) in ${node.description} does not end with BranchResultNode"
+                        )
+                    }
+                }
+                return true
+            }
+
+            return false
+        } finally {
+            visiting.remove(node)
+        }
+    }
+
+    private fun metaAliasForBranch(branch: LoqiGrammarParser.BranchContext, result: DecisionTreeElement) {
+        if (branch.arrow().ID() != null) {
+            if (branch.arrow().ID().text !in aliases) {
+                aliases[branch.arrow().ID().text] = HashSet();
+            }
+            aliases[branch.arrow().ID().text]?.add(result)
+        }
+    }
+
+    private fun metaAliasForBranch(branch: LoqiGrammarParser.TupleBranchContext, result: DecisionTreeElement) {
+        if (branch.arrow().ID() != null) {
+            if (branch.arrow().ID().text !in aliases) {
+                aliases[branch.arrow().ID().text] = HashSet();
+            }
+            aliases[branch.arrow().ID().text]?.add(result)
+        }
+    }
+
+    private fun metaAliasForOut(out: LoqiGrammarParser.OutContext?, result: DecisionTreeElement) {
+        if (out?.ID() != null) {
+            if (out.ID().text !in aliases) {
+                aliases[out.ID().text] = HashSet();
+            }
+            aliases[out.ID().text]?.add(result)
+        }
+    }
+
+    private fun findAlias(element: DecisionTreeElement): String? {
+        return aliases.entries
+            .firstOrNull { element in it.value }
+            ?.key
+    }
 
 }

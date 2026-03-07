@@ -183,7 +183,7 @@ id : ID ;
 
 //-------------ОПИСАНИЕ ДЕРЕВА-----------
 
-treeDecl : TREE id '(' treeVarDecls ')' thoughtBranch metadataSection?
+treeDecl : THOUGHT_PROCESS_GRAPH id '(' treeVarDecls ')' thoughtBranch metadataSection?
          ;
 
 thoughtBranch : '{' stmts '}';
@@ -212,11 +212,11 @@ stmt: concludeBranchResult ';'
 whileCycle: WHILE '(' exp ')' aggBranches;
 
 expBranches: branches
-           | OUT exp ELSE thoughtBranch // thoughtBranch is outcome, only for booleans
+           | out exp ELSE thoughtBranch // thoughtBranch is outcome, only for booleans
            ;
 
 aggBranches: branches
-           | thoughtBranch OUT outcomeType // thoughtBranch is agg body
+           | thoughtBranch out outcomeType // thoughtBranch is agg body
            ;
 
 branchAggregation: AGG aggregation aggBranches ;
@@ -235,11 +235,10 @@ question: ASK '(' exp ')' expBranches
 
 tuple: '(' exp (';' exp)* ';'? ')';
 
-tupleBranch: tuple '->' thoughtBranch;
+tupleBranch: tuple arrow thoughtBranch;
 
 namespaceResolution: ID (':' ID)*
                    ;
-
 callArgs: exp (',' exp)* ','? ;
 
 callStmt: namespaceResolution '(' callArgs? ')'
@@ -247,10 +246,18 @@ callStmt: namespaceResolution '(' callArgs? ')'
 
 branches: '{' branch* '}';
 
-branch: outcomeType '->' thoughtBranch ';'?
-      | outcomeType '->' OUT ';'
-      | exp '->' thoughtBranch ';'?
-      | exp '->' OUT ';'
+arrow: '->'
+     | '-[' ID ']->'
+     ;
+
+out: OUT
+   | OUT '[' ID ']'
+   ;
+
+branch: outcomeType arrow thoughtBranch ';'?
+      | outcomeType arrow out ';'
+      | exp arrow thoughtBranch ';'?
+      | exp arrow out ';'
       ;
 
 outcomeType: CORRECT
@@ -269,7 +276,7 @@ concludeBranchResult: CONCLUDE ':' outcomeType (metadataSection | AS id)?
                     | CONCLUDE ':' outcomeType WITH '(' exp ')' (metadataSection | AS id)?
                     ;
 
-metaDecl: META FOR id metadataSection;
+metaDecl: META FOR id metadataSection ';'?;
 
 //-------------ЛЕКСЕР---------------
 
@@ -316,7 +323,7 @@ OBJ : 'obj' ;
 ENUM : 'enum' ;
 PROP : 'prop' ;
 REL : 'rel' ;
-TREE: 'tree' ;
+THOUGHT_PROCESS_GRAPH: 'tpg' ;
 
 VALUES : 'values' ;
 META : 'meta' ;
