@@ -255,9 +255,9 @@ out: OUT
    ;
 
 branch: outcomeType arrow thoughtBranch ';'?
-      | outcomeType arrow out ';'
+      | outcomeType arrow OUT ';'
       | exp arrow thoughtBranch ';'?
-      | exp arrow out ';'
+      | exp arrow OUT ';'
       ;
 
 outcomeType: CORRECT

@@ -350,7 +350,9 @@ class TreeLoqiBuilder(
         val outcomeOut = if (outBranch.isEmpty()) defaultOut else parseBranchResult(outBranch[0].outcomeType().text)
 
         if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
-            outcomes.add(Outcome(outcomeOut, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
+            outcomes.add(Outcome(outcomeOut, DummyNode()).also{
+                if (!outBranch.isEmpty()) metaAliasForBranch(outBranch[0], it)
+            });
         }
 
         outcomes.forEach {checkResultReachability(it)}
