@@ -1,0 +1,20 @@
+<DecisionTree>
+    <InputVariables>
+        <DecisionTreeVarDecl name="X" type="operator"/>
+        <AdditionalVarDecl name="X1" type="token">
+            <Expression>
+                <Variable name="x"/>
+            </Expression>
+        </AdditionalVarDecl>
+    </InputVariables>
+    <ThoughtBranch _alias="main">
+        <QuestionNode _alias="q1">
+            <Expression>
+                <DecisionTreeVar name="X"/>
+            </Expression>
+            <Outcome value="1">
+                <BranchResultNode value="CORRECT" _skill="test"/>
+            </Outcome>
+        </QuestionNode>
+    </ThoughtBranch>
+</DecisionTree>
