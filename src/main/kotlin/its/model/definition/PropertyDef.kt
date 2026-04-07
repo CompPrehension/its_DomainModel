@@ -85,7 +85,7 @@ class PropertyDef(
 
     //----------------------------------
 
-    override fun plainCopy() = PropertyDef(declaringClassName, name, type, kind, paramsDecl)
+    override fun plainCopy(name: String) = PropertyDef(declaringClassName, name, type, kind, paramsDecl)
 
     override fun mergeEquals(other: PropertyDef): Boolean {
         if (!super.mergeEquals(other)) return false

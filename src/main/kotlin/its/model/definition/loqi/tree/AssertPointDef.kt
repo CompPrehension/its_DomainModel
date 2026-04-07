@@ -6,5 +6,5 @@ import its.model.definition.types.StringType
 class AssertPointDef(): CallableProcedureDef("assert",
     listOf(ProcedureArgument("condition", BooleanType),
                         ProcedureArgument("message", StringType)),
-                scopeCapture = false
+                scopeCapture = false, null
 )

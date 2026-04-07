@@ -1,7 +1,7 @@
 import its.model.DomainSolvingModel
 import its.model.nodes.xml.DecisionTreeXMLWriter
 import java.io.FileWriter
-import kotlin.io.path.Path
+
 
 fun main(){
     val dir = "D:\\MEGA\\IT\\Projects\\Git\\Indev\\render-meaning-tree\\domain"
@@ -9,7 +9,7 @@ fun main(){
         dir,
         buildMethod = DomainSolvingModel.BuildMethod.LOQI
     ).validate()
-    FileWriter(Path(dir, "test.xml").toString()).use {
-        DecisionTreeXMLWriter.writeDecisionTreeToXml(model.decisionTree, it)
+    FileWriter("D:\\MEGA\\IT\\Projects\\Git\\Indev\\render-meaning-tree\\domain\\test.xml").use { writer ->
+        DecisionTreeXMLWriter.writeDecisionTreeToXml(model.decisionTree, writer)
     }
 }

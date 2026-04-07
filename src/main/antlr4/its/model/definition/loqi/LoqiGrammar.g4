@@ -137,6 +137,7 @@ exp
     | CLASS':'ID                    #classLiteral
     | OBJ':'ID                      #objLiteral
     | '$'ID                         #variable
+    | namespaceResolution '(' callArgs? ')' #callExpr
     | '(' exp ')'                   #parenthesisExp
     | exp '->' ID paramsValuesExpr?                   #getByRelationship
     | exp '.'  ID paramsValuesExpr?                    #getProperty
@@ -156,6 +157,7 @@ exp
     | FOR_ANY ID ID ('[' exp ']')? '{' exp '}'                      #existQuantifierExp
     | FOR_ALL ID ID ('[' exp ']')? '{' exp '}'                    #forAllQuantifierExp
     | <assoc=right>  exp '?' exp ':' exp                    #ternaryIfExp
+    | '+' OBJ ':' id '(' ('{' objStatement* '}')? metadataSection? ')' #addNewObjectExp
     | exp '+=>' ID paramsValuesExpr? '(' (exp ',')* exp ')'    #addRelationshipExp
     | <assoc=right> exp '=' exp                             #assignExp
     | <assoc=right> IF '(' exp ')' exp (ELSE exp )?                  #ifExp
@@ -276,7 +278,7 @@ concludeBranchResult: CONCLUDE ':' outcomeType (metadataSection | AS id)?
                     | CONCLUDE ':' outcomeType WITH '(' exp ')' (metadataSection | AS id)?
                     ;
 
-metaDecl: META FOR id metadataSection ';'?;
+metaDecl: META FOR id metadataSection;
 
 //-------------ЛЕКСЕР---------------
 

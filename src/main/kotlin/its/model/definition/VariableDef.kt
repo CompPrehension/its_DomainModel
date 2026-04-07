@@ -25,7 +25,7 @@ class VariableDef(
         getKnownValueObject(results)
     }
 
-    override fun plainCopy() = VariableDef(name, valueObjectName)
+    override fun plainCopy(name: String) = VariableDef(name, valueObjectName)
 
     //---Операции (на валидном домене)---
 

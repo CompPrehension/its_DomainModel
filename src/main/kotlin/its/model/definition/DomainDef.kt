@@ -36,6 +36,12 @@ sealed class DomainDef<Self : DomainDef<Self>> : DomainElement(), Cloneable {
      */
     fun deepCopy() = plainCopy().also { it.addMerge(this as Self) }
 
+    /**
+     * Создать глубокую копию данного определения с заданным именем;
+     * Копия не принадлежит ни к какому домену и полностью повторяет состояние данного определения
+     */
+    fun deepCopy(name: String) = plainCopy(name).also { it.addMerge(this as Self) }
+
     internal fun copyForDomain(domainModel: DomainModel) =
         plainCopy().also {
             it.domainModel = domainModel
@@ -48,7 +54,15 @@ sealed class DomainDef<Self : DomainDef<Self>> : DomainElement(), Cloneable {
      * кроме основных зарактеристик (параметров основного конструктора)
      * @return копия - определение того же типа, что и данное, такое что `copy.mergeEquals(this) == true`
      */
-    abstract fun plainCopy(): Self
+    fun plainCopy(): Self = plainCopy(name)
+
+    /**
+     * Создать базовую копию данного определения с заданным именем;
+     * Копия не принадлежит ни к какому домену, и не содержит никакого состояния данного определения,
+     * кроме основных зарактеристик (параметров основного конструктора)
+     * @return копия - определение того же типа, что и данное, такое что `copy.mergeEquals(this) == true`
+     */
+    abstract fun plainCopy(name: String): Self
 
     /**
      * Являются ли определения одинаковыми по основным характеристикам - возможно ли слияние между ними

@@ -40,6 +40,7 @@ object GlobalNamespace: Namespace(null, "")
 open class CallableProcedureDef(
     open val name: String, open val arguments: List<ProcedureArgument>,
     open val scopeCapture: Boolean, // процедура захватит все доступные переменные в области вызова
+    open val returnType: Type<*>?
 ) {
 
     fun callNode(callArguments: List<Operator>, next: DecisionTreeNode): ProcedureCallNode {

@@ -21,7 +21,7 @@ class EnumDef(
 
     //----------------------------------
 
-    override fun plainCopy() = EnumDef(name)
+    override fun plainCopy(name: String) = EnumDef(name)
 
     override fun mergeEquals(other: EnumDef): Boolean {
         if (!super.mergeEquals(other)) return false

@@ -1,6 +1,11 @@
 package its.model.expressions.xml
 
 import its.model.build.xml.XMLWriter
+import its.model.definition.NamedParamsValues
+import its.model.definition.ObjectPropertyValueStatement
+import its.model.definition.OrderedParamsValues
+import its.model.definition.RelationshipLinkStatement
+import its.model.definition.types.EnumValue
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import its.model.expressions.operators.*
@@ -50,6 +55,8 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
         private const val VAR_NAME = "varName"
         private const val PROPERTY_NAME = "propertyName"
         private const val RELATIONSHIP_NAME = "relationshipName"
+        private const val CLASS_NAME = "className"
+        private const val TARGET = "target"
 
         private const val PARAMS_VALUES = "ParamsValues"
     }
@@ -60,6 +67,11 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
 
     private fun Element.withOperand(operand: Operator): Element {
         return this.withChild(operand.createElement())
+    }
+
+    private fun Element.withOperands(operand: List<Operator>): Element {
+        operand.forEach { this.withOperand(it) }
+        return this
     }
 
     private fun createValueLiteralElement(tagName: String, literal: ValueLiteral<*, *>): Element {
@@ -162,6 +174,68 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
         return this.withChild(params.createElement())
     }
 
+    private fun createDomainValueElement(value: Any): Element {
+        return when (value) {
+            is Boolean -> newElement("Boolean").withAttribute(VALUE, value.toString())
+            is Double -> newElement("Double").withAttribute(VALUE, value.toString())
+            is Int -> newElement("Integer").withAttribute(VALUE, value.toString())
+            is String -> newElement("String").withAttribute(VALUE, value)
+            is EnumValue -> newElement("Enum")
+                .withAttribute("owner", value.enumName)
+                .withAttribute(VALUE, value.valueName)
+            else -> throw IllegalArgumentException("Unsupported AddNewObject value type: ${value::class.java.name}")
+        }
+    }
+
+    private fun createDomainParamsElement(params: its.model.definition.ParamsValues): Element? {
+        if (params.isEmpty()) {
+            return null
+        }
+
+        val paramsElement = newElement(PARAMS_VALUES)
+        when (params) {
+            is NamedParamsValues -> {
+                paramsElement.setAttribute(TYPE, "named")
+                params.valuesMap.forEach { (paramName, paramValue) ->
+                    paramsElement.appendChild(
+                        newElement("Param")
+                            .withAttribute(NAME, paramName)
+                            .withChild(createDomainValueElement(paramValue))
+                    )
+                }
+            }
+            is OrderedParamsValues -> {
+                paramsElement.setAttribute(TYPE, "ordered")
+                params.values.forEach { paramValue ->
+                    paramsElement.appendChild(createDomainValueElement(paramValue))
+                }
+            }
+        }
+        return paramsElement
+    }
+
+    private fun createPropertyValueElement(statement: ObjectPropertyValueStatement): Element {
+        val propertyElement = newElement("PropertyValue")
+            .withAttribute(PROPERTY_NAME, statement.propertyName)
+
+        createDomainParamsElement(statement.paramsValues)?.also(propertyElement::appendChild)
+        propertyElement.appendChild(createDomainValueElement(statement.value))
+
+        return propertyElement
+    }
+
+    private fun createRelationshipLinkElement(statement: RelationshipLinkStatement): Element {
+        val relationshipElement = newElement("RelationshipLink")
+            .withAttribute(RELATIONSHIP_NAME, statement.relationshipName)
+
+        createDomainParamsElement(statement.paramsValues)?.also(relationshipElement::appendChild)
+        statement.objectNames.forEach { objectName ->
+            relationshipElement.appendChild(newElement("Object").withAttribute(NAME, objectName))
+        }
+
+        return relationshipElement
+    }
+
     override fun process(op: GetPropertyValue): Element {
         return newElement("GetPropertyValue")
             .withAttribute(PROPERTY_NAME, op.propertyName)
@@ -213,6 +287,28 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
             .withOperand(op.subjectExpr)
             .withParams(op.paramsValues)
             .apply { op.objectExprs.forEach { withOperand(it) } }
+    }
+
+    override fun process(op: AddNewObject): Element {
+        val objectDefElement = newElement("ObjectDef")
+            .withAttribute(NAME, op.objectDef.name)
+            .withAttribute(CLASS_NAME, op.objectDef.className)
+
+        op.objectDef.definedPropertyValues.forEach { statement ->
+            objectDefElement.appendChild(createPropertyValueElement(statement))
+        }
+        op.objectDef.relationshipLinks.forEach { link ->
+            objectDefElement.appendChild(createRelationshipLinkElement(link))
+        }
+
+        return newElement("AddNewObject")
+            .withChild(objectDefElement)
+    }
+
+    override fun process(op: CallProcedure): Element {
+        return newElement("CallProcedure")
+            .withAttribute(TARGET, op.procedure.javaClass.simpleName)
+            .withOperands(op.args)
     }
 
     override fun process(op: ExistenceQuantifier): Element {

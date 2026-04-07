@@ -4,6 +4,11 @@ import its.model.TypedVariable
 import its.model.build.xml.ElementBuildContext
 import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
+import its.model.definition.*
+import its.model.definition.loqi.tree.AssertPointDef
+import its.model.definition.loqi.tree.CallableProcedureDef
+import its.model.definition.loqi.tree.DebugDumpPointDef
+import its.model.definition.loqi.tree.DebugPointDef
 import its.model.definition.types.Comparison
 import its.model.definition.types.EnumValue
 import its.model.expressions.Operator
@@ -53,6 +58,8 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
     private const val VAR_NAME = "varName"
     private const val PROPERTY_NAME = "propertyName"
     private const val RELATIONSHIP_NAME = "relationshipName"
+    private const val CLASS_NAME = "className"
+    private const val TARGET = "target"
 
     private const val PARAMS_VALUES = "ParamsValues"
 
@@ -118,6 +125,11 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
         return types.single()
     }
 
+    private fun Element.getRequiredAttribute(attr: String): String {
+        return this.findAttribute(attr)
+            .orElseBuildErr("Element '${this.tagName}' needs to have a '$attr' attribute")
+    }
+
     //--- Построение ---
 
     private fun buildParamsValues(el: Element?): ParamsValuesExprList {
@@ -129,6 +141,75 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
             })
         } else {
             OrderedParamsValuesExprList(el.getChildren().map { build(it) })
+        }
+    }
+
+    private fun buildDomainValue(el: Element): Any {
+        return when (el.tagName) {
+            "Boolean" -> el.getRequiredAttribute(VALUE).toBoolean()
+            "Double" -> el.getRequiredAttribute(VALUE).toDouble()
+            "Integer" -> el.getRequiredAttribute(VALUE).toInt()
+            "String" -> el.getRequiredAttribute(VALUE)
+            "Enum" -> EnumValue(el.getRequiredAttribute("owner"), el.getRequiredAttribute(VALUE))
+            else -> throw createException("Unsupported AddNewObject value tag '${el.tagName}'")
+        }
+    }
+
+    private fun buildDomainParamsValues(el: Element?): its.model.definition.ParamsValues {
+        if (el == null) return NamedParamsValues(mapOf())
+        val type = el.getAttribute(TYPE)
+        return if (type == "named") {
+            NamedParamsValues(
+                el.getChildren().filter { it.findChild() != null }.associate { paramEl ->
+                    paramEl.getAttribute(NAME) to buildDomainValue(paramEl.findChild()!!)
+                }
+            )
+        } else {
+            OrderedParamsValues(el.getChildren().map(::buildDomainValue))
+        }
+    }
+
+    private fun buildObjectDef(el: Element): ObjectDef {
+        val objectDef = ObjectDef(
+            el.getRequiredAttribute(NAME),
+            el.getRequiredAttribute(CLASS_NAME),
+        )
+
+        el.getChildren("PropertyValue").forEach { propertyEl ->
+            val propertyName = propertyEl.getAttribute(PROPERTY_NAME)
+            val valueEl = propertyEl.getChildren().firstOrNull { it.tagName != PARAMS_VALUES }
+                ?: throw createException("PropertyValue in AddNewObject must contain a value element")
+
+            objectDef.definedPropertyValues.add(
+                PropertyValueStatement(
+                    objectDef,
+                    propertyName,
+                    buildDomainParamsValues(propertyEl.findChild(PARAMS_VALUES)),
+                    buildDomainValue(valueEl),
+                )
+            )
+        }
+
+        el.getChildren("RelationshipLink").forEach { relationshipEl ->
+            objectDef.relationshipLinks.add(
+                RelationshipLinkStatement(
+                    objectDef,
+                    relationshipEl.getRequiredAttribute(RELATIONSHIP_NAME),
+                    relationshipEl.getChildren("Object").map { it.getRequiredAttribute(NAME) },
+                    buildDomainParamsValues(relationshipEl.findChild(PARAMS_VALUES)),
+                )
+            )
+        }
+
+        return objectDef
+    }
+
+    private fun resolveProcedure(target: String): CallableProcedureDef {
+        return when (target) {
+            AssertPointDef::class.simpleName -> AssertPointDef()
+            DebugDumpPointDef::class.simpleName -> DebugDumpPointDef()
+            DebugPointDef::class.simpleName -> DebugPointDef()
+            else -> throw createException("Unknown CallProcedure target '$target'")
         }
     }
 
@@ -235,6 +316,20 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
             buildParamsValues(el.findChild(PARAMS_VALUES)),
             el.operands.subList(1, el.operands.size),
         )
+    }
+
+    @BuildForTags(["AddNewObject"])
+    @BuildingClass(AddNewObject::class)
+    private fun buildAddNewObject(el: ExpressionBuildContext): AddNewObject {
+        val objectDefEl = el.getRequiredChild("ObjectDef")
+        return AddNewObject(buildObjectDef(objectDefEl))
+    }
+
+    @BuildForTags(["CallProcedure"])
+    @BuildingClass(CallProcedure::class)
+    private fun buildCallProcedure(el: ExpressionBuildContext): CallProcedure {
+        val target = el.getRequiredAttribute(TARGET)
+        return CallProcedure(resolveProcedure(target), el.operands)
     }
 
     @BuildForTags(["Cast"])

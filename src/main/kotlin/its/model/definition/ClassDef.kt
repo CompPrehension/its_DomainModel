@@ -45,7 +45,7 @@ class ClassDef(
 
     //----------------------------------
 
-    override fun plainCopy() = ClassDef(name, parentName)
+    override fun plainCopy(name: String) = ClassDef(name, parentName)
 
     override fun mergeEquals(other: ClassDef): Boolean {
         if (!super.mergeEquals(other)) return false

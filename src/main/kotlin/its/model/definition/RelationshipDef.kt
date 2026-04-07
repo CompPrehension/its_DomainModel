@@ -181,7 +181,7 @@ class RelationshipDef(
 
     //----------------------------------
 
-    override fun plainCopy() = RelationshipDef(subjectClassName, name, objectClassNames, kind)
+    override fun plainCopy(name: String) = RelationshipDef(subjectClassName, name, objectClassNames, kind)
 
     override fun mergeEquals(other: RelationshipDef): Boolean {
         if (!super.mergeEquals(other)) return false

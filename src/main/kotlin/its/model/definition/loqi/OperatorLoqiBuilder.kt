@@ -1,9 +1,13 @@
 package its.model.definition.loqi
 
 import its.model.TypedVariable
-import its.model.definition.EnumValueRef
-import its.model.definition.ThisShouldNotHappen
+import its.model.definition.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
+import its.model.definition.loqi.OperatorLoqiBuilder.Companion.buildExp
+import its.model.definition.loqi.tree.AssertPointDef
+import its.model.definition.loqi.tree.CallableProcedureDef
+import its.model.definition.loqi.tree.DebugDumpPointDef
+import its.model.definition.loqi.tree.DebugPointDef
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import its.model.expressions.operators.*
@@ -23,6 +27,7 @@ import java.io.StringReader
 class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
 
     companion object {
+        private const val AUTO_OBJECT_NAME = "auto_template_unnamed"
 
         /**
          * Построить дерево выражений
@@ -55,6 +60,10 @@ class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
         }
     }
 
+    private val proceduresByNamespace: Map<List<String>, List<CallableProcedureDef>> = mapOf(
+        listOf("debug") to listOf(AssertPointDef(), DebugDumpPointDef(), DebugPointDef()),
+    )
+
     private fun getParamsValues(ctx: LoqiGrammarParser.ParamsValuesExprContext?): ParamsValuesExprList {
         if (ctx == null) return ParamsValuesExprList.EMPTY
         return when (ctx) {
@@ -65,6 +74,21 @@ class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
 
             is LoqiGrammarParser.OrderedParamsValuesExprContext ->
                 OrderedParamsValuesExprList(ctx.exp().map { visit(it) })
+
+            else -> throw ThisShouldNotHappen()
+        }
+    }
+
+    private fun getDomainParamsValues(ctx: LoqiGrammarParser.ParamsValuesContext?): its.model.definition.ParamsValues {
+        if (ctx == null) return NamedParamsValues(mapOf())
+        return when (ctx) {
+            is LoqiGrammarParser.NamedParamsValuesContext ->
+                NamedParamsValues(ctx.namedParamValue().associate {
+                    it.id().getName() to it.value().getValue()
+                })
+
+            is LoqiGrammarParser.OrderedParamsValuesContext ->
+                OrderedParamsValues(ctx.value().map { it.getValue() })
 
             else -> throw ThisShouldNotHappen()
         }
@@ -158,6 +182,38 @@ class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
         )
     }
 
+    override fun visitAddNewObjectExp(ctx: LoqiGrammarParser.AddNewObjectExpContext): Operator {
+        val objectDef = ObjectDef(AUTO_OBJECT_NAME, ctx.id().getName())
+
+        ctx.objStatement().forEach { objStatement ->
+            if (objStatement.propertyValueStatement() != null) {
+                val propertyStatement = objStatement.propertyValueStatement()
+                objectDef.definedPropertyValues.add(
+                    ObjectPropertyValueStatement(
+                        objectDef,
+                        propertyStatement.id().getName(),
+                        getDomainParamsValues(propertyStatement.paramsValues()),
+                        propertyStatement.value().getValue(),
+                    )
+                )
+            } else if (objStatement.relationshipLinkStatement() != null) {
+                val linkStatement = objStatement.relationshipLinkStatement()
+                objectDef.relationshipLinks.add(
+                    RelationshipLinkStatement(
+                        objectDef,
+                        linkStatement.id().getName(),
+                        linkStatement.idList().id().map { it.getName() },
+                        getDomainParamsValues(linkStatement.paramsValues()),
+                    )
+                )
+            } else {
+                throw ThisShouldNotHappen()
+            }
+        }
+
+        return AddNewObject(objectDef)
+    }
+
     override fun visitNotExp(ctx: LoqiGrammarParser.NotExpContext): Operator {
         return LogicalNot(visit(ctx.exp()))
     }
@@ -243,8 +299,34 @@ class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
         return GetByRelationship(visit(ctx.exp()), ctx.ID().getName(), getParamsValues(ctx.paramsValuesExpr()))
     }
 
+    override fun visitCallExpr(ctx: LoqiGrammarParser.CallExprContext): Operator {
+        val procedure = resolveCallProcedure(ctx.namespaceResolution())
+            ?: throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
+        val args = ctx.callArgs()?.exp()?.map { visit(it) } ?: emptyList()
+        return CallProcedure(procedure, args)
+    }
+
+    private fun resolveCallProcedure(ctx: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
+        val parts = ctx.ID().map { it.getName() }
+        if (parts.isEmpty()) {
+            return null
+        }
+
+        val procedureName = parts.last()
+        val namespace = parts.dropLast(1)
+        return proceduresByNamespace[namespace]?.find { it.name == procedureName }
+    }
+
+    private fun LoqiGrammarParser.IdContext.getName(): String {
+        return ID().text.removeSurrounding("`")
+    }
+
     private fun TerminalNode.getName(): String {
         return text.removeSurrounding("`")
+    }
+
+    private fun LoqiGrammarParser.ValueContext.getValue(): Any {
+        return getValueLiteral().value
     }
 
     private fun LoqiGrammarParser.ValueContext.getValueLiteral(): ValueLiteral<*, *> {

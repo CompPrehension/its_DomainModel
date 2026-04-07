@@ -1,8 +1,16 @@
 package its.model.definition.loqi
 
 import its.model.definition.EnumValueRef
+import its.model.definition.NamedParamsValues
+import its.model.definition.OrderedParamsValues
+import its.model.definition.RelationshipLinkStatement
 import its.model.definition.loqi.LoqiStringUtils.insertEscapes
 import its.model.definition.loqi.LoqiStringUtils.toLoqiName
+import its.model.definition.loqi.OperatorLoqiWriter.Companion.getWrittenExpression
+import its.model.definition.loqi.OperatorLoqiWriter.Companion.writeExpression
+import its.model.definition.loqi.tree.AssertPointDef
+import its.model.definition.loqi.tree.DebugDumpPointDef
+import its.model.definition.loqi.tree.DebugPointDef
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import its.model.expressions.operators.*
@@ -221,6 +229,33 @@ class OperatorLoqiWriter private constructor(
         )
     }
 
+    override fun process(op: AddNewObject) {
+        write("+ obj: ${op.objectDef.className.toLoqiName()}(")
+        val objectStatements = mutableListOf<String>()
+        objectStatements.addAll(op.objectDef.definedPropertyValues.map { propertyStatement ->
+            asString {
+                write(propertyStatement.propertyName.toLoqiName())
+                writeDomainParams(propertyStatement.paramsValues)
+                write(" = ")
+                writeDomainValue(propertyStatement.value)
+                write(" ;")
+            }
+        })
+        objectStatements.addAll(op.objectDef.relationshipLinks.map { link ->
+            asString { writeRelationshipStatement(link) }
+        })
+
+        if (objectStatements.isNotEmpty()) {
+            writeEnclosed("{", objectStatements.joinToString("\n"), "}")
+        }
+        write(")")
+    }
+
+    override fun process(op: CallProcedure) {
+        write(procedureToNamespaceResolution(op))
+        writeMultipleEnclosed("(", op.args, ",", ")")
+    }
+
     override fun process(op: Block) {
         writeln("{")
         indent()
@@ -304,6 +339,48 @@ class OperatorLoqiWriter private constructor(
 
     private fun writeMultipleEnclosed(open: String, nested: Collection<Operator>, separator: String, close: String) {
         writeMultipleEnclosedStrings(open, nested.map { asString { it.write() } }, separator, close)
+    }
+
+    private fun writeDomainValue(value: Any) {
+        when (value) {
+            is String -> write("\"${value.insertEscapes()}\"")
+            is EnumValueRef -> write("${value.enumName.toLoqiName()}:${value.valueName.toLoqiName()}")
+            else -> write(value)
+        }
+    }
+
+    private fun writeDomainParams(paramsValues: its.model.definition.ParamsValues) {
+        if (paramsValues.isEmpty()) {
+            return
+        }
+        val paramsStrings = when (paramsValues) {
+            is OrderedParamsValues -> paramsValues.values.map { value ->
+                asString { writeDomainValue(value) }
+            }
+            is NamedParamsValues -> paramsValues.valuesMap.map { (paramName, value) ->
+                asString {
+                    write(paramName.toLoqiName())
+                    write(" = ")
+                    writeDomainValue(value)
+                }
+            }
+        }
+        writeMultipleEnclosedStrings("<", paramsStrings, ",", ">")
+    }
+
+    private fun writeRelationshipStatement(link: RelationshipLinkStatement) {
+        write(link.relationshipName.toLoqiName())
+        writeDomainParams(link.paramsValues)
+        writeEnclosed("(", link.objectNames.joinToString(", ") { it.toLoqiName() }, ")")
+        write(" ;")
+    }
+
+    private fun procedureToNamespaceResolution(op: CallProcedure): String {
+        return when (op.procedure) {
+            is AssertPointDef, is DebugDumpPointDef, is DebugPointDef ->
+                "debug:${op.procedure.name.toLoqiName()}"
+            else -> op.procedure.name.toLoqiName()
+        }
     }
 
     private fun writeMultipleEnclosedStrings(
@@ -429,6 +506,8 @@ class OperatorLoqiWriter private constructor(
         override fun process(op: LogicalOr) = Precedence.OR
 
         override fun process(op: AddRelationshipLink) = Precedence.ADD_RELATIONSHIP
+        override fun process(op: AddNewObject) = Precedence.LITERAL
+        override fun process(op: CallProcedure) = Precedence.LITERAL
 
         override fun process(op: IfThen): Precedence {
             return if (op.elseExpr != null) Precedence.TERNARY_CONDITIONAL
