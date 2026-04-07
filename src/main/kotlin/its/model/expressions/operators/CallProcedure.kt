@@ -1,7 +1,7 @@
 package its.model.expressions.operators
 
 import its.model.definition.DomainModel
-import its.model.definition.loqi.tree.CallableProcedureDef
+import its.model.definition.procedures.CallableProcedureDef
 import its.model.definition.types.Type
 import its.model.expressions.ExpressionContext
 import its.model.expressions.ExpressionValidationResults

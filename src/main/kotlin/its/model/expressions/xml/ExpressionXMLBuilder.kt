@@ -5,10 +5,10 @@ import its.model.build.xml.ElementBuildContext
 import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
 import its.model.definition.*
-import its.model.definition.loqi.tree.AssertPointDef
-import its.model.definition.loqi.tree.CallableProcedureDef
-import its.model.definition.loqi.tree.DebugDumpPointDef
-import its.model.definition.loqi.tree.DebugPointDef
+import its.model.definition.procedures.AssertPointDef
+import its.model.definition.procedures.CallableProcedureDef
+import its.model.definition.procedures.DebugDumpPointDef
+import its.model.definition.procedures.DebugPointDef
 import its.model.definition.types.Comparison
 import its.model.definition.types.EnumValue
 import its.model.expressions.Operator

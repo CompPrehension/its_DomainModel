@@ -1,4 +1,4 @@
-package its.model.definition.loqi.tree
+package its.model.definition.procedures
 
 /**
  * Интерфейс для обозначения процедур-макросов, вызываемых только на уровне сборки дерева

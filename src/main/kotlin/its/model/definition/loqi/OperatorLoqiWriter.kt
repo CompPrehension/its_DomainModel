@@ -8,9 +8,9 @@ import its.model.definition.loqi.LoqiStringUtils.insertEscapes
 import its.model.definition.loqi.LoqiStringUtils.toLoqiName
 import its.model.definition.loqi.OperatorLoqiWriter.Companion.getWrittenExpression
 import its.model.definition.loqi.OperatorLoqiWriter.Companion.writeExpression
-import its.model.definition.loqi.tree.AssertPointDef
-import its.model.definition.loqi.tree.DebugDumpPointDef
-import its.model.definition.loqi.tree.DebugPointDef
+import its.model.definition.procedures.AssertPointDef
+import its.model.definition.procedures.DebugDumpPointDef
+import its.model.definition.procedures.DebugPointDef
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import its.model.expressions.operators.*

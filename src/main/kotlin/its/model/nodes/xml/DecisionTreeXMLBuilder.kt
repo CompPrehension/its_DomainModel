@@ -7,7 +7,7 @@ import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
 import its.model.definition.build.DomainBuilderUtils
 import its.model.definition.loqi.OperatorLoqiBuilder
-import its.model.definition.loqi.tree.CallableProcedureDef
+import its.model.definition.procedures.CallableProcedureDef
 import its.model.definition.types.Clazz
 import its.model.definition.types.EnumValue
 import its.model.definition.types.Obj

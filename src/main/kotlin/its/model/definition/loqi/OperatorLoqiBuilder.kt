@@ -4,10 +4,10 @@ import its.model.TypedVariable
 import its.model.definition.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
 import its.model.definition.loqi.OperatorLoqiBuilder.Companion.buildExp
-import its.model.definition.loqi.tree.AssertPointDef
-import its.model.definition.loqi.tree.CallableProcedureDef
-import its.model.definition.loqi.tree.DebugDumpPointDef
-import its.model.definition.loqi.tree.DebugPointDef
+import its.model.definition.procedures.AssertPointDef
+import its.model.definition.procedures.CallableProcedureDef
+import its.model.definition.procedures.DebugDumpPointDef
+import its.model.definition.procedures.DebugPointDef
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import its.model.expressions.operators.*

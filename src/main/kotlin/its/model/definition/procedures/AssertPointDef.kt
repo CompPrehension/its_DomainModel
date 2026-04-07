@@ -1,4 +1,4 @@
-package its.model.definition.loqi.tree
+package its.model.definition.procedures
 
 import its.model.definition.types.BooleanType
 import its.model.definition.types.StringType

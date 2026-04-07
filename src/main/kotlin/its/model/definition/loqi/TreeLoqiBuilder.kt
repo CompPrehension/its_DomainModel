@@ -5,7 +5,7 @@ import its.model.ValueTuple
 import its.model.definition.*
 import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
-import its.model.definition.loqi.tree.*
+import its.model.definition.procedures.*
 import its.model.definition.types.*
 import its.model.expressions.Operator
 import its.model.expressions.literals.DecisionTreeVarLiteral

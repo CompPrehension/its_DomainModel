@@ -2,9 +2,8 @@ package its.model.nodes
 
 import its.model.definition.DomainModel
 import its.model.definition.DomainUseException
-import its.model.definition.loqi.tree.CallableProcedureDef
+import its.model.definition.procedures.CallableProcedureDef
 import its.model.expressions.Operator
-import its.model.nodes.visitors.DecisionTreeBehaviour
 import its.model.nodes.visitors.LinkNodeBehaviour
 
 class ProcedureCallNode(val procedure: CallableProcedureDef, val arguments: List<Operator>,
