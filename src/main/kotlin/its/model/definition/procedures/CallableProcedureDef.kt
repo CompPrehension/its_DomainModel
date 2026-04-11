@@ -55,7 +55,8 @@ open class CallableProcedureDef(
     val scopeCapture: Boolean = false,
     /** Процедура может принимать больше аргументов, чем указано в `arguments`. Но их проверка происходит в момент ризонинга*/
     val varArgs: Boolean = false,
-    /** Состояние ризонера может измениться после вызова процедуры (в т.ч. переданные аргументы) */
+    /** Состояние ризонера может измениться после вызова процедуры (в т.ч. переданные аргументы).
+     * Открывает доступ к редактированию модели, обучающей ситуации и доступ к [its.model.DomainSolvingModel] */
     val ensureMutable: Boolean = false,
 ) {
     val qualifiedName: String
