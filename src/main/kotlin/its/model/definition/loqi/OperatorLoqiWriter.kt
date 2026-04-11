@@ -1,9 +1,10 @@
 package its.model.definition.loqi
 
+import its.model.ObjectPropertyValueBlueprint
+import its.model.RelationshipLinkBlueprint
 import its.model.definition.EnumValueRef
 import its.model.definition.NamedParamsValues
 import its.model.definition.OrderedParamsValues
-import its.model.definition.RelationshipLinkStatement
 import its.model.definition.loqi.LoqiStringUtils.insertEscapes
 import its.model.definition.loqi.LoqiStringUtils.toLoqiName
 import its.model.definition.loqi.OperatorLoqiWriter.Companion.getWrittenExpression
@@ -229,18 +230,8 @@ class OperatorLoqiWriter private constructor(
     override fun process(op: AddNewObject) {
         write("+ obj: ${op.objectDef.className.toLoqiName()}(")
         val objectStatements = mutableListOf<String>()
-        objectStatements.addAll(op.objectDef.definedPropertyValues.map { propertyStatement ->
-            asString {
-                write(propertyStatement.propertyName.toLoqiName())
-                writeDomainParams(propertyStatement.paramsValues)
-                write(" = ")
-                writeDomainValue(propertyStatement.value)
-                write(" ;")
-            }
-        })
-        objectStatements.addAll(op.objectDef.relationshipLinks.map { link ->
-            asString { writeRelationshipStatement(link) }
-        })
+        objectStatements.addAll(op.objectDef.properties.map(::writePropertyStatement))
+        objectStatements.addAll(op.objectDef.relationships.map(::writeRelationshipStatement))
 
         if (objectStatements.isNotEmpty()) {
             writeEnclosed("{", objectStatements.joinToString("\n"), "}")
@@ -365,11 +356,23 @@ class OperatorLoqiWriter private constructor(
         writeMultipleEnclosedStrings("<", paramsStrings, ",", ">")
     }
 
-    private fun writeRelationshipStatement(link: RelationshipLinkStatement) {
-        write(link.relationshipName.toLoqiName())
-        writeDomainParams(link.paramsValues)
-        writeEnclosed("(", link.objectNames.joinToString(", ") { it.toLoqiName() }, ")")
-        write(" ;")
+    private fun writePropertyStatement(property: ObjectPropertyValueBlueprint): String {
+        return asString {
+            write(property.name.toLoqiName())
+            writeDomainParams(property.params)
+            write(" = ")
+            property.value.write()
+            write(" ;")
+        }
+    }
+
+    private fun writeRelationshipStatement(link: RelationshipLinkBlueprint): String {
+        return asString {
+            write(link.name.toLoqiName())
+            writeDomainParams(link.params)
+            writeMultipleEnclosed("(", link.value, ",", ")")
+            write(" ;")
+        }
     }
 
     private fun procedureToNamespaceResolution(op: CallProcedure): String {

@@ -73,9 +73,17 @@ objStatement : propertyValueStatement
              | relationshipLinkStatement
              ;
 
+dynamicObjStatement : dynamicPropertyValueStatement
+             | dynamicRelationshipLinkStatement
+             ;
+
 propertyValueStatement : id paramsValues? '=' value ';' ;
 
 relationshipLinkStatement : id paramsValues? '(' idList ')' ';' ;
+
+dynamicPropertyValueStatement : id paramsValues? '=' exp ';' ;
+
+dynamicRelationshipLinkStatement : id paramsValues? '(' exp (',' exp)* ','? ')' ';' ;
 
 varDecl :  varLeftPart id;
 
@@ -157,7 +165,7 @@ exp
     | FOR_ANY ID ID ('[' exp ']')? '{' exp '}'                      #existQuantifierExp
     | FOR_ALL ID ID ('[' exp ']')? '{' exp '}'                    #forAllQuantifierExp
     | <assoc=right>  exp '?' exp ':' exp                    #ternaryIfExp
-    | '+' OBJ ':' id '(' ('{' objStatement* '}')? metadataSection? ')' #addNewObjectExp
+    | '+' OBJ ':' id '(' ('{' dynamicObjStatement* '}')? metadataSection? ')' #addNewObjectExp
     | exp '+=>' ID paramsValuesExpr? '(' (exp ',')* exp ')'    #addRelationshipExp
     | <assoc=right> exp '=' exp                             #assignExp
     | <assoc=right> IF '(' exp ')' exp (ELSE exp )?                  #ifExp

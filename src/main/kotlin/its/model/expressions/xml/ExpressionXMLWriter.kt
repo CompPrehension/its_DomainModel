@@ -1,10 +1,10 @@
 package its.model.expressions.xml
 
+import its.model.ObjectPropertyValueBlueprint
+import its.model.RelationshipLinkBlueprint
 import its.model.build.xml.XMLWriter
 import its.model.definition.NamedParamsValues
-import its.model.definition.ObjectPropertyValueStatement
 import its.model.definition.OrderedParamsValues
-import its.model.definition.RelationshipLinkStatement
 import its.model.definition.types.EnumValue
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
@@ -214,23 +214,23 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
         return paramsElement
     }
 
-    private fun createPropertyValueElement(statement: ObjectPropertyValueStatement): Element {
+    private fun createPropertyValueElement(statement: ObjectPropertyValueBlueprint): Element {
         val propertyElement = newElement("PropertyValue")
-            .withAttribute(PROPERTY_NAME, statement.propertyName)
+            .withAttribute(PROPERTY_NAME, statement.name)
 
-        createDomainParamsElement(statement.paramsValues)?.also(propertyElement::appendChild)
-        propertyElement.appendChild(createDomainValueElement(statement.value))
+        createDomainParamsElement(statement.params)?.also(propertyElement::appendChild)
+        propertyElement.appendChild(statement.value.createElement())
 
         return propertyElement
     }
 
-    private fun createRelationshipLinkElement(statement: RelationshipLinkStatement): Element {
+    private fun createRelationshipLinkElement(statement: RelationshipLinkBlueprint): Element {
         val relationshipElement = newElement("RelationshipLink")
-            .withAttribute(RELATIONSHIP_NAME, statement.relationshipName)
+            .withAttribute(RELATIONSHIP_NAME, statement.name)
 
-        createDomainParamsElement(statement.paramsValues)?.also(relationshipElement::appendChild)
-        statement.objectNames.forEach { objectName ->
-            relationshipElement.appendChild(newElement("Object").withAttribute(NAME, objectName))
+        createDomainParamsElement(statement.params)?.also(relationshipElement::appendChild)
+        statement.value.forEach { objectExpr ->
+            relationshipElement.appendChild(objectExpr.createElement())
         }
 
         return relationshipElement
@@ -291,13 +291,12 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
 
     override fun process(op: AddNewObject): Element {
         val objectDefElement = newElement("ObjectDef")
-            .withAttribute(NAME, op.objectDef.name)
             .withAttribute(CLASS_NAME, op.objectDef.className)
 
-        op.objectDef.definedPropertyValues.forEach { statement ->
+        op.objectDef.properties.forEach { statement ->
             objectDefElement.appendChild(createPropertyValueElement(statement))
         }
-        op.objectDef.relationshipLinks.forEach { link ->
+        op.objectDef.relationships.forEach { link ->
             objectDefElement.appendChild(createRelationshipLinkElement(link))
         }
 

@@ -1,4 +1,5 @@
 gen/
+src/main/antlr4/its/model/definition/loqi/.antlr
 target/
 out/
 !.mvn/wrapper/maven-wrapper.jar

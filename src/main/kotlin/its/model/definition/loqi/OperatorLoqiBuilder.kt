@@ -1,5 +1,8 @@
 package its.model.definition.loqi
 
+import its.model.ObjectDefBlueprint
+import its.model.ObjectPropertyValueBlueprint
+import its.model.RelationshipLinkBlueprint
 import its.model.TypedVariable
 import its.model.definition.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
@@ -28,8 +31,6 @@ class OperatorLoqiBuilder(
 ) : LoqiGrammarBaseVisitor<Operator>() {
 
     companion object {
-        private const val AUTO_OBJECT_NAME = "auto_template_unnamed"
-
         /**
          * Построить дерево выражений
          *
@@ -180,26 +181,24 @@ class OperatorLoqiBuilder(
     }
 
     override fun visitAddNewObjectExp(ctx: LoqiGrammarParser.AddNewObjectExpContext): Operator {
-        val objectDef = ObjectDef(AUTO_OBJECT_NAME, ctx.id().getName())
+        val objectDef = ObjectDefBlueprint(ctx.id().getName())
 
-        ctx.objStatement().forEach { objStatement ->
-            if (objStatement.propertyValueStatement() != null) {
-                val propertyStatement = objStatement.propertyValueStatement()
-                objectDef.definedPropertyValues.add(
-                    ObjectPropertyValueStatement(
-                        objectDef,
+        ctx.dynamicObjStatement().forEach { objStatement ->
+            if (objStatement.dynamicPropertyValueStatement() != null) {
+                val propertyStatement = objStatement.dynamicPropertyValueStatement()
+                objectDef.properties.add(
+                    ObjectPropertyValueBlueprint(
                         propertyStatement.id().getName(),
+                        visit(propertyStatement.exp()),
                         getDomainParamsValues(propertyStatement.paramsValues()),
-                        propertyStatement.value().getValue(),
                     )
                 )
-            } else if (objStatement.relationshipLinkStatement() != null) {
-                val linkStatement = objStatement.relationshipLinkStatement()
-                objectDef.relationshipLinks.add(
-                    RelationshipLinkStatement(
-                        objectDef,
+            } else if (objStatement.dynamicRelationshipLinkStatement() != null) {
+                val linkStatement = objStatement.dynamicRelationshipLinkStatement()
+                objectDef.relationships.add(
+                    RelationshipLinkBlueprint(
                         linkStatement.id().getName(),
-                        linkStatement.idList().id().map { it.getName() },
+                        linkStatement.exp().map { visit(it) },
                         getDomainParamsValues(linkStatement.paramsValues()),
                     )
                 )

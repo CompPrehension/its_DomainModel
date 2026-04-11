@@ -1,10 +1,14 @@
 package its.model.expressions.xml
 
+import its.model.ObjectDefBlueprint
+import its.model.ObjectPropertyValueBlueprint
+import its.model.RelationshipLinkBlueprint
 import its.model.TypedVariable
 import its.model.build.xml.ElementBuildContext
 import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
-import its.model.definition.*
+import its.model.definition.NamedParamsValues
+import its.model.definition.OrderedParamsValues
 import its.model.definition.procedures.BuiltinProcedureRegistry
 import its.model.definition.procedures.CallableProcedureDef
 import its.model.definition.types.Comparison
@@ -167,33 +171,28 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
         }
     }
 
-    private fun buildObjectDef(el: Element): ObjectDef {
-        val objectDef = ObjectDef(
-            el.getRequiredAttribute(NAME),
-            el.getRequiredAttribute(CLASS_NAME),
-        )
+    private fun buildObjectDef(el: Element): ObjectDefBlueprint {
+        val objectDef = ObjectDefBlueprint(el.getRequiredAttribute(CLASS_NAME))
 
         el.getChildren("PropertyValue").forEach { propertyEl ->
             val propertyName = propertyEl.getAttribute(PROPERTY_NAME)
             val valueEl = propertyEl.getChildren().firstOrNull { it.tagName != PARAMS_VALUES }
                 ?: throw createException("PropertyValue in AddNewObject must contain a value element")
 
-            objectDef.definedPropertyValues.add(
-                PropertyValueStatement(
-                    objectDef,
+            objectDef.properties.add(
+                ObjectPropertyValueBlueprint(
                     propertyName,
+                    build(valueEl),
                     buildDomainParamsValues(propertyEl.findChild(PARAMS_VALUES)),
-                    buildDomainValue(valueEl),
                 )
             )
         }
 
         el.getChildren("RelationshipLink").forEach { relationshipEl ->
-            objectDef.relationshipLinks.add(
-                RelationshipLinkStatement(
-                    objectDef,
+            objectDef.relationships.add(
+                RelationshipLinkBlueprint(
                     relationshipEl.getRequiredAttribute(RELATIONSHIP_NAME),
-                    relationshipEl.getChildren("Object").map { it.getRequiredAttribute(NAME) },
+                    relationshipEl.getChildren().filter { it.tagName != PARAMS_VALUES }.map(::build),
                     buildDomainParamsValues(relationshipEl.findChild(PARAMS_VALUES)),
                 )
             )
