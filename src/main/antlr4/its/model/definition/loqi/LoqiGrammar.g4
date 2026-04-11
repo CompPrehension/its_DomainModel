@@ -3,6 +3,7 @@ grammar LoqiGrammar;
 fullTreeDecl: treeDeclHelpers* treeDecl treeDeclHelpers* EOF;
 
 treeDeclHelpers: metaDecl
+               | fragmentDef
                ;
 
 fullExp : exp EOF;
@@ -193,7 +194,7 @@ id : ID ;
 
 //-------------ОПИСАНИЕ ДЕРЕВА-----------
 
-treeDecl : THOUGHT_PROCESS_GRAPH id '(' treeVarDecls ')' thoughtBranch metadataSection?
+treeDecl : THOUGHT_PROCESS_GRAPH id '(' treeVarDecls? ')' thoughtBranch metadataSection?
          ;
 
 thoughtBranch : '{' stmts '}';
@@ -249,6 +250,7 @@ tupleBranch: tuple arrow thoughtBranch;
 
 namespaceResolution: ID (':' ID)*
                    ;
+
 callArgs: exp (',' exp)* ','? ;
 
 callStmt: namespaceResolution '(' callArgs? ')'
@@ -287,6 +289,9 @@ concludeBranchResult: CONCLUDE ':' outcomeType (WITH '(' exp ')')? (metadataSect
                     ;
 
 metaDecl: META FOR id metadataSection;
+
+
+fragmentDef: FRAGMENT id '(' treeVarDecls? ')' thoughtBranch;
 
 //-------------ЛЕКСЕР---------------
 
@@ -371,6 +376,8 @@ NULL : 'null' ;
 HYP: 'hyp' ;
 MUTEX: 'mutex' ;
 OUT: 'out';
+
+FRAGMENT: 'fragment';
 
 CONCLUDE : 'conclude';
 CORRECT : 'correct' ;

@@ -28,6 +28,7 @@ import java.io.StringReader
  */
 class OperatorLoqiBuilder(
     private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
+    private val decisionTreeVarNameResolver: DecisionTreeVarNameResolver = DecisionTreeVarNameResolver.IDENTITY,
 ) : LoqiGrammarBaseVisitor<Operator>() {
 
     companion object {
@@ -219,7 +220,7 @@ class OperatorLoqiBuilder(
     }
 
     override fun visitTreeVar(ctx: LoqiGrammarParser.TreeVarContext): Operator {
-        return DecisionTreeVarLiteral(ctx.ID().getName())
+        return DecisionTreeVarLiteral(decisionTreeVarNameResolver.resolve(ctx.ID().getName()))
     }
 
     override fun visitCompareExp(ctx: LoqiGrammarParser.CompareExpContext): Operator {

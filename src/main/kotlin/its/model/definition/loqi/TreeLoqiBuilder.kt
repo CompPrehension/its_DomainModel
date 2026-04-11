@@ -5,9 +5,8 @@ import its.model.ValueTuple
 import its.model.definition.*
 import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
-import its.model.definition.procedures.BuiltinProcedureRegistry
-import its.model.definition.procedures.CallableProcedureDef
-import its.model.definition.procedures.ProcedureRegistry
+import its.model.definition.loqi.tree.FragmentDef
+import its.model.definition.procedures.*
 import its.model.definition.types.*
 import its.model.expressions.Operator
 import its.model.expressions.literals.DecisionTreeVarLiteral
@@ -18,6 +17,7 @@ import org.antlr.v4.runtime.CommonTokenStream
 import org.antlr.v4.runtime.tree.ParseTree
 import java.io.Reader
 import java.net.URL
+import java.util.*
 
 class TreeLoqiBuilder(
     private var decisionTree : DecisionTree?,
@@ -26,10 +26,23 @@ class TreeLoqiBuilder(
 
     private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf()
     private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
+    private val fragments: MutableMap<String, RegisteredFragment> = mutableMapOf()
+    private val fragmentInliningStack = ArrayDeque<FragmentInliningContext>()
+    private val fragmentCallStack = ArrayDeque<String>()
 
     // TODO: needs more refactoring, more debugging
 
     data class BranchInfo<T>(val out: T?, val bodyBranches: List<ThoughtBranch>, val outcomes: Outcomes<T>)
+
+    private data class RegisteredFragment(
+        val definition: FragmentDef,
+        val body: ThoughtBranchContext,
+    )
+
+    private data class FragmentInliningContext(
+        val fragmentName: String,
+        val variableMapping: Map<String, String>,
+    )
 
     companion object {
         @JvmStatic
@@ -60,7 +73,7 @@ class TreeLoqiBuilder(
     }
 
     private fun visitExp(ctx: LoqiGrammarParser.ExpContext): Operator {
-        return ctx.accept(OperatorLoqiBuilder(procedureRegistry))
+        return ctx.accept(OperatorLoqiBuilder(procedureRegistry, currentDecisionTreeVarNameResolver()))
     }
 
     private fun Operator.unwrap(): Any {
@@ -78,20 +91,15 @@ class TreeLoqiBuilder(
         }
     }
 
-    override fun visitCallStmt(ctx: LoqiGrammarParser.CallStmtContext): ProcedureCallNode {
-        val procedure = resolveCallNamespace(ctx.namespaceResolution())
-        if (procedure == null) {
-            throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
-        } else {
-            var args = if (ctx.callArgs() != null && !ctx.callArgs().isEmpty) {
-                ctx.callArgs().exp().map {
-                    visitExp(it)
-                }.toList()
-            } else {
-                listOf()
-            }
-            return procedure.callNode(args, DummyNode())
+    override fun visitCallStmt(ctx: LoqiGrammarParser.CallStmtContext): DecisionTreeNode {
+        resolveFragment(ctx.namespaceResolution())?.let { fragment ->
+            return inlineFragment(fragment, ctx)
         }
+
+        val procedure = resolveProcedure(ctx.namespaceResolution())
+            ?: throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
+        val args = buildCallArgs(ctx.callArgs())
+        return procedure.callNode(args, DummyNode())
     }
 
     override fun visitThoughtBranch(ctx: LoqiGrammarParser.ThoughtBranchContext): ThoughtBranch {
@@ -179,6 +187,9 @@ class TreeLoqiBuilder(
             result.fillMetadata(ctx.metadataSection())
         } else {
             val call = visitCallStmt(ctx.callStmt());
+            if (call !is ProcedureCallNode) {
+                throw LoqiDomainBuildException(ctx.start.line, "Fragments cannot be used in conclude redirects")
+            }
             result = BranchResultRedirectingNode(call.asExpr(), actionExp);
         }
         if (ctx.id() != null) {
@@ -435,14 +446,14 @@ class TreeLoqiBuilder(
     fun visitAndGetTypedVar(ctx: LoqiGrammarParser.TypedVarContext): TypedVariable {
         return TypedVariable(
             ctx.type().text,
-            ctx.id().text
+            resolveDecisionTreeVarName(ctx.id().getName())
         )
     }
 
     fun visitAndGetTypedVar(ctx: LoqiGrammarParser.TypedVarLinearContext): TypedVariable {
         return TypedVariable(
             ctx.type().text,
-            ctx.id().text
+            resolveDecisionTreeVarName(ctx.id().getName())
         )
     }
 
@@ -498,8 +509,8 @@ class TreeLoqiBuilder(
                 throw LoqiDomainBuildException("Variable assignments must have value");
             } else {
                 DecisionTreeVarAssignment(TypedVariable(
-                    decl.getToken(ID, 1).text,
-                    decl.getToken(ID, 0).text,
+                    decl.type().text,
+                    resolveDecisionTreeVarName(decl.id().getName()),
                 ), visitExp(decl.exp()))
             }
         } ?: emptyList()
@@ -534,23 +545,35 @@ class TreeLoqiBuilder(
     }
 
     override fun visitFullTreeDecl(ctx: LoqiGrammarParser.FullTreeDeclContext): DecisionTree {
+        ctx.treeDeclHelpers().forEach { helper ->
+            helper.fragmentDef()?.let { registerFragment(it) }
+        }
+
         val tree = visitTreeDecl(ctx.treeDecl());
         val helpers = ctx.treeDeclHelpers();
         helpers.forEach { helper ->
-            val child = helper.getChild(0)
-            if (child is LoqiGrammarParser.MetaDeclContext) {
-                applyMetadataDecl(child);
-            }
+            helper.metaDecl()?.let { applyMetadataDecl(it) }
         }
         return tree
     }
 
-    fun resolveCallNamespace(id: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
+    private fun resolveProcedure(id: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
         val resolutions = id.ID().map { it.text.removeSurrounding("`") }
         if (resolutions.isEmpty()) {
             return null
         }
         return procedureRegistry.resolve(resolutions.dropLast(1), resolutions.last())
+    }
+
+    private fun resolveFragment(id: LoqiGrammarParser.NamespaceResolutionContext): RegisteredFragment? {
+        val resolutions = id.ID().map { it.text.removeSurrounding("`") }
+        if (resolutions.isEmpty()) {
+            return null
+        }
+        if (resolutions.dropLast(1) != ProcedureNamespaces.FRAGMENT.getScopeParts()) {
+            return null
+        }
+        return fragments[resolutions.last()]
     }
 
     fun applyMetadataDecl(meta: LoqiGrammarParser.MetaDeclContext) {
@@ -569,7 +592,7 @@ class TreeLoqiBuilder(
             variable.exp() == null
         }?.map { variable -> TypedVariable(
             variable.type().text,
-            variable.id().text,
+            resolveDecisionTreeVarName(variable.id().getName()),
         )
         } ?: emptyList()
 
@@ -577,14 +600,13 @@ class TreeLoqiBuilder(
             variable.exp() != null
         }?.map { variable -> domainOpAt(ctx.start.line) { DecisionTreeVarAssignment(TypedVariable(
             variable.type().text,
-            variable.id().text,
+            resolveDecisionTreeVarName(variable.id().getName()),
         ), visitExp(variable.exp()));
         }} ?: emptyList()
 
         decisionTree = DecisionTree(variables, varAssignments,
             visitThoughtBranch(ctx?.thoughtBranch() ?: throw ThisShouldNotHappen()))
         decisionTree?.fillMetadata(ctx.metadataSection())
-
 
         return decisionTree as DecisionTree
     }
@@ -639,6 +661,131 @@ class TreeLoqiBuilder(
     }
 
     private fun EnumValueRefContext.getRef() = EnumValueRef(id(0).getName(), id(1).getName())
+
+    private fun registerFragment(ctx: FragmentDefContext) {
+        val name = ctx.id().getName()
+        if (fragments.containsKey(name)) {
+            throw LoqiDomainBuildException(ctx.start.line, "Fragment `$name` is already declared")
+        }
+
+        val arguments = ctx.treeVarDecls()?.treeVarDecl()?.map { arg ->
+            if (arg.exp() != null) {
+                throw LoqiDomainBuildException(arg.start.line, "Fragment argument `${arg.id().getName()}` cannot have an initializer")
+            }
+            ProcedureArgument(arg.id().getName(), arg.type().getType())
+        } ?: emptyList()
+
+        fragments[name] = RegisteredFragment(
+            FragmentDef(name, arguments),
+            ctx.thoughtBranch()
+        )
+    }
+
+    private fun inlineFragment(fragment: RegisteredFragment, callCtx: CallStmtContext): DecisionTreeNode {
+        val fragmentName = fragment.definition.qualifiedName
+        if (fragmentName in fragmentCallStack) {
+            val cycle = (fragmentCallStack + fragmentName).joinToString(" -> ")
+            throw LoqiDomainBuildException(callCtx.start.line, "Recursive fragment expansion detected: $cycle")
+        }
+
+        val actualArguments = buildCallArgs(callCtx.callArgs())
+        validateFragmentArguments(fragment, actualArguments, callCtx)
+        val variableMapping = fragment.definition.arguments.zip(actualArguments).associate { (formal, actual) ->
+            formal.name to (actual as DecisionTreeVarLiteral).name
+        }
+
+        fragmentCallStack.addLast(fragmentName)
+        fragmentInliningStack.addLast(FragmentInliningContext(fragmentName, variableMapping))
+        try {
+            return visitThoughtBranch(fragment.body).start
+        } finally {
+            fragmentInliningStack.removeLast()
+            fragmentCallStack.removeLast()
+        }
+    }
+
+    private fun validateFragmentArguments(
+        fragment: RegisteredFragment,
+        actualArguments: List<Operator>,
+        callCtx: CallStmtContext,
+    ) {
+        val expectedCount = fragment.definition.arguments.size
+        if (actualArguments.size != expectedCount) {
+            throw LoqiDomainBuildException(
+                callCtx.start.line,
+                "Argument size mismatch for fragment `${fragment.definition.qualifiedName}` (${actualArguments.size} != $expectedCount)"
+            )
+        }
+        actualArguments.forEachIndexed { index, arg ->
+            if (arg !is DecisionTreeVarLiteral) {
+                val expected = fragment.definition.arguments[index]
+                throw LoqiDomainBuildException(
+                    callCtx.start.line,
+                    "Fragment argument `${expected.name}` must be a decision tree variable literal"
+                )
+            }
+        }
+    }
+
+    private fun buildCallArgs(ctx: CallArgsContext?): List<Operator> {
+        return ctx?.exp()?.map { visitExp(it) } ?: emptyList()
+    }
+
+    private fun currentDecisionTreeVarNameResolver(): DecisionTreeVarNameResolver {
+        return DecisionTreeVarNameResolver { name -> resolveDecisionTreeVarName(name) }
+    }
+
+    private fun resolveDecisionTreeVarName(name: String): String {
+        val iterator = fragmentInliningStack.descendingIterator()
+        while (iterator.hasNext()) {
+            val resolved = iterator.next().variableMapping[name]
+            if (resolved != null) {
+                return resolved
+            }
+        }
+        return name
+    }
+
+    private fun TypeContext.getType(): Type<*> {
+        if (intType() != null) return IntegerType(intType().intRange()?.getRange() ?: AnyNumber)
+        if (doubleType() != null) return DoubleType(doubleType().doubleRange()?.getRange() ?: AnyNumber)
+        if (BOOL_TYPE() != null) return BooleanType
+        if (STRING_TYPE() != null) return StringType
+        if (id() != null) return EnumType(id().getName())
+        throw ThisShouldNotHappen()
+    }
+
+    private fun IntRangeContext.getRange(): Range {
+        return if (intList() != null) {
+            DiscreteRange(intList().INTEGER().map { it.text.toDouble() }.toSet())
+        } else {
+            val start =
+                if (intRangeStart().INTEGER() != null) intRangeStart().INTEGER().text.toDouble()
+                else Double.NEGATIVE_INFINITY
+            val end =
+                if (INTEGER() != null) INTEGER().text.toDouble()
+                else Double.POSITIVE_INFINITY
+
+            if (start.isInfinite() && end.isInfinite()) AnyNumber
+            else ContinuousRange(start to end)
+        }
+    }
+
+    private fun DoubleRangeContext.getRange(): Range {
+        return if (doubleList() != null) {
+            DiscreteRange(doubleList().DOUBLE().map { it.text.toDouble() }.toSet())
+        } else {
+            val start =
+                if (doubleRangeStart().DOUBLE() != null) doubleRangeStart().DOUBLE().text.toDouble()
+                else Double.NEGATIVE_INFINITY
+            val end =
+                if (DOUBLE() != null) DOUBLE().text.toDouble()
+                else Double.POSITIVE_INFINITY
+
+            if (start.isInfinite() && end.isInfinite()) AnyNumber
+            else ContinuousRange(start to end)
+        }
+    }
 
     private fun checkResultReachability(node: DecisionTreeNode, strict: Boolean): Boolean {
         val visiting = HashSet<DecisionTreeNode>()
