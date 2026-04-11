@@ -47,12 +47,16 @@ object GlobalNamespace : Namespace(null, "")
  * Встраиваемая в дерево процедура, влияющая на поведение интерпретатора или построителя дерева из языка loqi2
  */
 open class CallableProcedureDef(
-    open val name: String,
-    open val arguments: List<ProcedureArgument>,
-    open val returnType: Type<*>? = null,
-    open val namespace: Namespace = GlobalNamespace,
-    open val scopeCapture: Boolean = false,
-    open val varArgs: Boolean = false,
+    val name: String,
+    val arguments: List<ProcedureArgument>,
+    val returnType: Type<*>? = null,
+    val namespace: Namespace = GlobalNamespace,
+    /** Процедура может видеть переменные в месте ее вызова, а не только те, что были переданы в аргументах */
+    val scopeCapture: Boolean = false,
+    /** Процедура может принимать больше аргументов, чем указано в `arguments`. Но их проверка происходит в момент ризонинга*/
+    val varArgs: Boolean = false,
+    /** Состояние ризонера может измениться после вызова процедуры (в т.ч. переданные аргументы) */
+    val ensureMutable: Boolean = false,
 ) {
     val qualifiedName: String
         get() = (namespace.getScopeParts() + name).joinToString(":")

@@ -308,7 +308,7 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
     override fun process(op: CallProcedure): Element {
         return newElement("CallProcedure")
             .withAttribute(TARGET, op.procedure.javaClass.simpleName)
-            .withOperands(op.args)
+            .withOperands(op.arguments)
     }
 
     override fun process(op: ExistenceQuantifier): Element {

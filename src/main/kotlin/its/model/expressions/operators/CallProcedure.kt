@@ -12,8 +12,8 @@ class CallProcedure(val procedure: CallableProcedureDef,
                     override val children: List<Operator>
 ): Operator() {
 
-    val args: List<Operator>
-        get() = args
+    val arguments: List<Operator>
+        get() = children
 
     override fun validateAndGetType(
         domainModel: DomainModel,

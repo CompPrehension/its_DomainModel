@@ -250,7 +250,7 @@ class OperatorLoqiWriter private constructor(
 
     override fun process(op: CallProcedure) {
         write(procedureToNamespaceResolution(op))
-        writeMultipleEnclosed("(", op.args, ",", ")")
+        writeMultipleEnclosed("(", op.arguments, ",", ")")
     }
 
     override fun process(op: Block) {
