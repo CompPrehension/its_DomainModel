@@ -5,5 +5,5 @@ import its.model.definition.types.StringType
 class DebugDumpPointDef(): CallableProcedureDef(
     "dump",
     listOf(ProcedureArgument("comment", StringType)),
-    scopeCapture = true, null
+    scopeCapture = true
 )

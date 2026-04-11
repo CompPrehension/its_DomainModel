@@ -2,6 +2,7 @@ package its.model.definition.procedures
 
 import its.model.definition.types.Type
 import its.model.expressions.Operator
+import its.model.expressions.operators.CallProcedure
 import its.model.nodes.DecisionTreeNode
 import its.model.nodes.Outcome
 import its.model.nodes.Outcomes
@@ -39,11 +40,23 @@ object GlobalNamespace: Namespace(null, "")
  */
 open class CallableProcedureDef(
     open val name: String, open val arguments: List<ProcedureArgument>,
-    open val scopeCapture: Boolean, // процедура захватит все доступные переменные в области вызова
-    open val returnType: Type<*>?
+    open val returnType: Type<*>? = null,
+    open val scopeCapture: Boolean = false, // процедура захватит все доступные переменные в области вызова
+    open val varArgs: Boolean = false, // аргументов в процедуре, помимо указанных в arguments может быть сколько угодно
 ) {
+    fun acceptsArguments(): Boolean {
+        return varArgs || arguments.isNotEmpty();
+    }
+
+    fun hasReturnType(): Boolean {
+        return returnType != null
+    }
 
     fun callNode(callArguments: List<Operator>, next: DecisionTreeNode): ProcedureCallNode {
         return ProcedureCallNode(this, callArguments, Outcomes(mutableListOf(Outcome(true, next))))
+    }
+
+    fun callExpr(callArguments: List<Operator>): CallProcedure {
+        return CallProcedure(this, callArguments)
     }
 }
