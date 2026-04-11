@@ -11,7 +11,8 @@ class SubinterpreterCall() : CallableProcedureDef(
     "subcall",
     listOf(ProcedureArgument("tree_name", StringType)),
     OptionalBool.Type,
-    varArgs = true
+    varArgs = true,
+    ensureMutable = true
 ), SubinterpreterProcedure {
 }
 
@@ -19,6 +20,7 @@ class MutableSubinterpreterCall() : CallableProcedureDef(
     "subcall_mut",
     listOf(ProcedureArgument("tree_name", StringType)),
     OptionalBool.Type,
-    varArgs = true
+    varArgs = true,
+    ensureMutable = true
 ), SubinterpreterProcedure {
 }
