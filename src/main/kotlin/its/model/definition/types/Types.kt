@@ -1,13 +1,7 @@
 package its.model.definition.types
 
 import its.model.definition.*
-import its.model.expressions.literals.BooleanLiteral
-import its.model.expressions.literals.ClassLiteral
-import its.model.expressions.literals.DoubleLiteral
-import its.model.expressions.literals.EnumLiteral
-import its.model.expressions.literals.IntegerLiteral
-import its.model.expressions.literals.ObjectLiteral
-import its.model.expressions.literals.StringLiteral
+import its.model.expressions.literals.*
 import java.util.*
 import kotlin.reflect.KClass
 
@@ -286,6 +280,25 @@ object Comparison {
 
         @JvmField
         val Equal = EnumValue(Type.enumName, "equal")
+    }
+}
+
+/**
+ * Тип "Опциональное логическое значение"
+ */
+object OptionalBool {
+    @JvmField
+    val Type = EnumType("OptionalBool")
+
+    object Values {
+        @JvmField
+        val True = EnumValue(Type.enumName, "true")
+
+        @JvmField
+        val False = EnumValue(Type.enumName, "false")
+
+        @JvmField
+        val Null = EnumValue(Type.enumName, "null")
     }
 }
 

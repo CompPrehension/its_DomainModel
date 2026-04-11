@@ -2,6 +2,7 @@ package its.model.definition
 
 import its.model.definition.types.Comparison
 import its.model.definition.types.EnumValue
+import its.model.definition.types.OptionalBool
 import java.util.*
 
 /**
@@ -52,6 +53,12 @@ class EnumContainer(domainModel: DomainModel) : RootDefContainer<EnumDef>(domain
             it.values.add(Comparison.Values.Less.toDef())
             it.values.add(Comparison.Values.Greater.toDef())
             it.values.add(Comparison.Values.Equal.toDef())
+        }
+
+        addBuiltIn(EnumDef(OptionalBool.Type.enumName)).also {
+            it.values.add(OptionalBool.Values.True.toDef())
+            it.values.add(OptionalBool.Values.False.toDef())
+            it.values.add(OptionalBool.Values.Null.toDef())
         }
     }
 }
