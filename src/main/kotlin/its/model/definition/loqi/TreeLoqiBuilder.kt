@@ -5,7 +5,9 @@ import its.model.ValueTuple
 import its.model.definition.*
 import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
-import its.model.definition.procedures.*
+import its.model.definition.procedures.BuiltinProcedureRegistry
+import its.model.definition.procedures.CallableProcedureDef
+import its.model.definition.procedures.ProcedureRegistry
 import its.model.definition.types.*
 import its.model.expressions.Operator
 import its.model.expressions.literals.DecisionTreeVarLiteral
@@ -18,15 +20,12 @@ import java.io.Reader
 import java.net.URL
 
 class TreeLoqiBuilder(
-    private var decisionTree : DecisionTree?
+    private var decisionTree : DecisionTree?,
+    private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
     private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf()
     private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
-    private val procedures: MutableMap<Namespace, List<CallableProcedureDef>> = mutableMapOf(
-        Pair(GlobalNamespace, mutableListOf()),
-        Pair(Namespace(GlobalNamespace, "debug"), listOf(AssertPointDef(), DebugDumpPointDef(), DebugPointDef()))
-    )
 
     // TODO: needs more refactoring, more debugging
 
@@ -61,7 +60,7 @@ class TreeLoqiBuilder(
     }
 
     private fun visitExp(ctx: LoqiGrammarParser.ExpContext): Operator {
-        return ctx.accept(OperatorLoqiBuilder())
+        return ctx.accept(OperatorLoqiBuilder(procedureRegistry))
     }
 
     private fun Operator.unwrap(): Any {
@@ -79,7 +78,7 @@ class TreeLoqiBuilder(
         }
     }
 
-    override fun visitCallStmt(ctx: LoqiGrammarParser.CallStmtContext): DecisionTreeNode {
+    override fun visitCallStmt(ctx: LoqiGrammarParser.CallStmtContext): ProcedureCallNode {
         val procedure = resolveCallNamespace(ctx.namespaceResolution())
         if (procedure == null) {
             throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
@@ -169,14 +168,19 @@ class TreeLoqiBuilder(
         return result
     }
 
-    override fun visitConcludeBranchResult(ctx: LoqiGrammarParser.ConcludeBranchResultContext): BranchResultNode {
-        val result : BranchResultNode
+    override fun visitConcludeBranchResult(ctx: LoqiGrammarParser.ConcludeBranchResultContext): DecisionTreeNode {
+        val result : DecisionTreeNode
         var actionExp: Operator? = null;
         if (ctx.exp() != null) {
             actionExp = visitExp(ctx.exp());
         }
-        result = BranchResultNode(parseBranchResult(ctx.outcomeType().text), actionExp);
-        result.fillMetadata(ctx.metadataSection())
+        if (ctx.outcomeType() != null) {
+            result = BranchResultNode(parseBranchResult(ctx.outcomeType().text), actionExp);
+            result.fillMetadata(ctx.metadataSection())
+        } else {
+            val call = visitCallStmt(ctx.callStmt());
+            result = BranchResultRedirectingNode(call.asExpr(), actionExp);
+        }
         if (ctx.id() != null) {
             if (ctx.id().text !in aliases) {
                 aliases[ctx.id().text] = HashSet();
@@ -542,25 +546,11 @@ class TreeLoqiBuilder(
     }
 
     fun resolveCallNamespace(id: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
-        val resolutions = id.ID().map{ i -> i.text}.toMutableList()
-        val resolutionSize = resolutions.size
-        val procName = resolutions.removeLast()
-        if (resolutionSize == 1) {
-            return procedures.get(GlobalNamespace)
-                    ?.find { proc -> proc.name == resolutions[0] }
-        } else {
-            for (ns in procedures) {
-                val res = ns.key.getScopeResolution().filter { !it.isEmpty() }
-                if (res.equals(resolutions)) {
-                    for (proc in ns.value) {
-                        if (proc.name == procName) {
-                            return proc
-                        }
-                    }
-                }
-            }
+        val resolutions = id.ID().map { it.text.removeSurrounding("`") }
+        if (resolutions.isEmpty()) {
+            return null
         }
-        return null
+        return procedureRegistry.resolve(resolutions.dropLast(1), resolutions.last())
     }
 
     fun applyMetadataDecl(meta: LoqiGrammarParser.MetaDeclContext) {

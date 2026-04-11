@@ -274,8 +274,8 @@ aggregation: AND
            | HYP
            ;
 
-concludeBranchResult: CONCLUDE ':' outcomeType (metadataSection | AS id)?
-                    | CONCLUDE ':' outcomeType WITH '(' exp ')' (metadataSection | AS id)?
+concludeBranchResult: CONCLUDE ':' outcomeType (WITH '(' exp ')')? (metadataSection | AS id)?
+                    | CONCLUDE ':' callStmt (WITH '(' exp ')')? (metadataSection | AS id)?
                     ;
 
 metaDecl: META FOR id metadataSection;

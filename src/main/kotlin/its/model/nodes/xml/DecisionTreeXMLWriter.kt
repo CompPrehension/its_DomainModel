@@ -3,6 +3,7 @@ package its.model.nodes.xml
 import its.model.TypedVariable
 import its.model.build.xml.XMLWriter
 import its.model.definition.loqi.OperatorLoqiWriter
+import its.model.definition.procedures.CallableProcedureDef
 import its.model.expressions.Operator
 import its.model.expressions.xml.ExpressionXMLWriter
 import its.model.nodes.*
@@ -51,6 +52,7 @@ class DecisionTreeXMLWriter(document: Document) : XMLWriter(document), DecisionT
         private const val DECISION_TREE_VAR_DECL_TAG = "DecisionTreeVarDecl"
         private const val ADDITIONAL_DECISION_TREE_VAR_DECL_TAG = "AdditionalVarDecl"
         private const val THOUGHT_BRANCH_TAG = "ThoughtBranch"
+        private const val EXPRESSION_ARGUMENTS_TAG = "ExpressionArguments"
 
         private const val PROCEDURE_CLASS_ATTR = "procedure"
         private const val VALUE_ATTR = "value"
@@ -92,6 +94,15 @@ class DecisionTreeXMLWriter(document: Document) : XMLWriter(document), DecisionT
         return this.use(this@DecisionTreeXMLWriter)
     }
 
+    private fun Element.withProcedureCall(procedure: CallableProcedureDef, arguments: List<Operator>): Element {
+        val argumentWrapper = newElement(EXPRESSION_ARGUMENTS_TAG)
+            .apply { arguments.forEach { withExpr(it) } }
+
+        return this
+            .withAttribute(PROCEDURE_CLASS_ATTR, procedure.javaClass.name)
+            .withChild(argumentWrapper)
+    }
+
     private fun Element.withOutcomes(outcomes: Outcomes<*>) : Element {
         return this.apply {
             outcomes.forEach{outcome ->
@@ -112,6 +123,13 @@ class DecisionTreeXMLWriter(document: Document) : XMLWriter(document), DecisionT
             .withMetadataOf(node)
     }
 
+    override fun process(node: BranchResultRedirectingNode): Element {
+        return newElement("BranchResultRedirectingNode")
+            .withProcedureCall(node.call.procedure, node.call.children)
+            .apply { if(node.actionExpr != null) withExpr(node.actionExpr) }
+            .withMetadataOf(node)
+    }
+
     override fun process(branch: ThoughtBranch): Element {
         return newElement(THOUGHT_BRANCH_TAG)
             .withChild(branch.start.createElement())
@@ -119,14 +137,8 @@ class DecisionTreeXMLWriter(document: Document) : XMLWriter(document), DecisionT
     }
 
     override fun process(node: ProcedureCallNode): Element {
-        var args = newElement("ExpressionArguments");
-        for (arg in node.arguments) {
-            args = args.withExpr(arg)
-        }
-
         return newElement("ProcedureCallNode")
-            .withAttribute(PROCEDURE_CLASS_ATTR, node.procedure.javaClass.name)
-            .withChild(args)
+            .withProcedureCall(node.procedure, node.arguments)
             .withOutcomes(node.outcomes)
             .withMetadataOf(node)
     }

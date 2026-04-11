@@ -5,10 +5,8 @@ import its.model.build.xml.ElementBuildContext
 import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
 import its.model.definition.*
-import its.model.definition.procedures.AssertPointDef
+import its.model.definition.procedures.BuiltinProcedureRegistry
 import its.model.definition.procedures.CallableProcedureDef
-import its.model.definition.procedures.DebugDumpPointDef
-import its.model.definition.procedures.DebugPointDef
 import its.model.definition.types.Comparison
 import its.model.definition.types.EnumValue
 import its.model.expressions.Operator
@@ -205,12 +203,8 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
     }
 
     private fun resolveProcedure(target: String): CallableProcedureDef {
-        return when (target) {
-            AssertPointDef::class.simpleName -> AssertPointDef()
-            DebugDumpPointDef::class.simpleName -> DebugDumpPointDef()
-            DebugPointDef::class.simpleName -> DebugPointDef()
-            else -> throw createException("Unknown CallProcedure target '$target'")
-        }
+        return BuiltinProcedureRegistry.resolve(target)
+            ?: throw createException("Unknown CallProcedure target '$target'")
     }
 
     @BuildForTags(["Variable"])

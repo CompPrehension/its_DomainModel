@@ -1,7 +1,7 @@
 package its.model.nodes.visitors
 
 import its.model.nodes.BranchResultNode
-import its.model.nodes.ProcedureCallNode
+import its.model.nodes.BranchResultRedirectingNode
 import its.model.nodes.ThoughtBranch
 
 /**
@@ -12,5 +12,6 @@ import its.model.nodes.ThoughtBranch
 interface DecisionTreeBehaviour<out Info> : LinkNodeBehaviour<Info> {
     // ---------------------- Для узлов дерева решений ---------------------------
     fun process(node: BranchResultNode): Info
+    fun process(node: BranchResultRedirectingNode): Info
     fun process(branch: ThoughtBranch): Info
 }

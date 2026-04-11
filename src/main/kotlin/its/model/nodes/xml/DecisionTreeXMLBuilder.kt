@@ -7,11 +7,13 @@ import its.model.build.xml.XMLBuildException
 import its.model.build.xml.XMLBuilder
 import its.model.definition.build.DomainBuilderUtils
 import its.model.definition.loqi.OperatorLoqiBuilder
+import its.model.definition.procedures.BuiltinProcedureRegistry
 import its.model.definition.procedures.CallableProcedureDef
 import its.model.definition.types.Clazz
 import its.model.definition.types.EnumValue
 import its.model.definition.types.Obj
 import its.model.expressions.Operator
+import its.model.expressions.operators.CallProcedure
 import its.model.expressions.xml.ExpressionXMLBuilder
 import its.model.nodes.*
 import org.w3c.dom.Element
@@ -48,6 +50,7 @@ sealed class AbstractDecisionTreeXMLBuilder<T : DecisionTreeElement> : XMLBuilde
         const val TYPE_ATTR = "type"
         const val LOGICAL_OP_ATTR = "operator"
         const val PROCEDURE_CLASS_ATTR = "procedure"
+        const val EXPRESSION_ARGUMENTS_TAG = "ExpressionArguments"
 
         const val ADDITIONAL_INFO_PREFIX = "_"
     }
@@ -96,6 +99,21 @@ sealed class AbstractDecisionTreeXMLBuilder<T : DecisionTreeElement> : XMLBuilde
         val el = createBuildContext(el, ThoughtBranch::class)
         val start = DecisionTreeNodeXMLBuilder.buildFromElement(el.getRequiredChild())
         return ThoughtBranch(start).collectMetadata(el)
+    }
+
+    protected fun buildCallableProcedure(className: String): CallableProcedureDef {
+        return BuiltinProcedureRegistry.resolve(className)
+            ?: Class.forName(className).getConstructor().newInstance() as CallableProcedureDef
+    }
+
+    protected fun ElementBuildContext.buildProcedureCallExpr(): CallProcedure {
+        val arguments = findChild(EXPRESSION_ARGUMENTS_TAG)
+            ?.getChildren()
+            ?.map { createBuildContext(it, Operator::class).getExpr() }
+            ?: emptyList()
+        val procedure = buildCallableProcedure(getRequiredAttribute(PROCEDURE_CLASS_ATTR))
+
+        return CallProcedure(procedure, arguments)
     }
 
 }
@@ -245,6 +263,15 @@ object DecisionTreeNodeXMLBuilder : AbstractDecisionTreeXMLBuilder<DecisionTreeN
         return BranchResultNode(value, expr).collectMetadata(el)
     }
 
+    @BuildForTags(["BranchResultRedirectingNode"])
+    @BuildingClass(BranchResultRedirectingNode::class)
+    private fun buildBranchResultRedirectingNode(el: ElementBuildContext): BranchResultRedirectingNode {
+        val call = el.buildProcedureCallExpr()
+        val expr = el.findExpr()
+
+        return BranchResultRedirectingNode(call, expr).collectMetadata(el)
+    }
+
 
     @BuildForTags(["LogicAggregationNode", "BranchAggregationNode"]) //FIXME обратная совместимость
     @BuildingClass(BranchAggregationNode::class)
@@ -343,12 +370,8 @@ object DecisionTreeNodeXMLBuilder : AbstractDecisionTreeXMLBuilder<DecisionTreeN
     @BuildForTags(["ProcedureCallNode"])
     @BuildingClass(ProcedureCallNode::class)
     private fun buildProcedureCallNode(el: ElementBuildContext): ProcedureCallNode {
-        val exprs = el.getChildren("ExpressionArguments").map({
-            createBuildContext(it, Operator::class).getExpr()
-        }).toList()
-        val className = el.findAttribute(PROCEDURE_CLASS_ATTR)
-        val procedure = Class.forName(className).getConstructor().newInstance() as CallableProcedureDef
-        return ProcedureCallNode(procedure, exprs, el.getOutcomes(Boolean::class)).collectMetadata(el)
+        val call = el.buildProcedureCallExpr()
+        return ProcedureCallNode(call.procedure, call.children, el.getOutcomes(Boolean::class)).collectMetadata(el)
     }
 
 }

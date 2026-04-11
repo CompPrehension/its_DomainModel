@@ -4,10 +4,9 @@ import its.model.TypedVariable
 import its.model.definition.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
 import its.model.definition.loqi.OperatorLoqiBuilder.Companion.buildExp
-import its.model.definition.procedures.AssertPointDef
+import its.model.definition.procedures.BuiltinProcedureRegistry
 import its.model.definition.procedures.CallableProcedureDef
-import its.model.definition.procedures.DebugDumpPointDef
-import its.model.definition.procedures.DebugPointDef
+import its.model.definition.procedures.ProcedureRegistry
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import its.model.expressions.operators.*
@@ -24,7 +23,9 @@ import java.io.StringReader
 /**
  * Построение дерева выражений [Operator] на основе текстовой записи
  */
-class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
+class OperatorLoqiBuilder(
+    private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
+) : LoqiGrammarBaseVisitor<Operator>() {
 
     companion object {
         private const val AUTO_OBJECT_NAME = "auto_template_unnamed"
@@ -59,10 +60,6 @@ class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
             return buildExp(StringReader(string))
         }
     }
-
-    private val proceduresByNamespace: Map<List<String>, List<CallableProcedureDef>> = mapOf(
-        listOf("debug") to listOf(AssertPointDef(), DebugDumpPointDef(), DebugPointDef()),
-    )
 
     private fun getParamsValues(ctx: LoqiGrammarParser.ParamsValuesExprContext?): ParamsValuesExprList {
         if (ctx == null) return ParamsValuesExprList.EMPTY
@@ -311,10 +308,7 @@ class OperatorLoqiBuilder : LoqiGrammarBaseVisitor<Operator>() {
         if (parts.isEmpty()) {
             return null
         }
-
-        val procedureName = parts.last()
-        val namespace = parts.dropLast(1)
-        return proceduresByNamespace[namespace]?.find { it.name == procedureName }
+        return procedureRegistry.resolve(parts.dropLast(1), parts.last())
     }
 
     private fun LoqiGrammarParser.IdContext.getName(): String {

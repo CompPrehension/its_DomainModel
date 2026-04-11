@@ -4,6 +4,7 @@ import its.model.definition.DomainModel
 import its.model.definition.DomainUseException
 import its.model.definition.procedures.CallableProcedureDef
 import its.model.expressions.Operator
+import its.model.expressions.operators.CallProcedure
 import its.model.nodes.visitors.LinkNodeBehaviour
 
 class ProcedureCallNode(val procedure: CallableProcedureDef, val arguments: List<Operator>,
@@ -43,5 +44,9 @@ class ProcedureCallNode(val procedure: CallableProcedureDef, val arguments: List
 
     override fun <I> use(behaviour: LinkNodeBehaviour<I>): I {
        return behaviour.process(this)
+    }
+
+    fun asExpr(): CallProcedure {
+        return CallProcedure(procedure, arguments)
     }
 }
