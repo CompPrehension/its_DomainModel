@@ -29,6 +29,7 @@ interface OperatorBehaviour<Info> : LiteralBehaviour<Info> {
     fun process(op: LogicalNot): Info
     fun process(op: LogicalOr): Info
     fun process(op: AddRelationshipLink): Info
+    fun process(op: RemoveRelationshipLink): Info
     fun process(op: AddNewObject): Info
     fun process(op: CallProcedure): Info
     fun process(op: Block): Info

@@ -289,6 +289,14 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
             .apply { op.objectExprs.forEach { withOperand(it) } }
     }
 
+    override fun process(op: RemoveRelationshipLink): Element {
+        return newElement("RemoveRelationshipLink")
+            .withAttribute(RELATIONSHIP_NAME, op.relationshipName)
+            .withOperand(op.subjectExpr)
+            .withParams(op.paramsValues)
+            .apply { op.objectExprs.forEach { withOperand(it) } }
+    }
+
     override fun process(op: AddNewObject): Element {
         val objectDefElement = newElement("ObjectDef")
             .withAttribute(CLASS_NAME, op.objectDef.className)

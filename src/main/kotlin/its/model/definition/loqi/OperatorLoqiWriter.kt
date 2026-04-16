@@ -227,6 +227,16 @@ class OperatorLoqiWriter private constructor(
         )
     }
 
+    override fun process(op: RemoveRelationshipLink) {
+        writeAndContinue(
+            asString { op.subjectExpr.writeLeft(op) },
+            "-=>"
+                + op.relationshipName.toLoqiName()
+                + asString { writeParams(op.paramsValues) }
+                + asString { writeMultipleEnclosed("(", op.objectExprs, ",", ")") },
+        )
+    }
+
     override fun process(op: AddNewObject) {
         write("+ obj: ${op.objectDef.className.toLoqiName()}(")
         val objectStatements = mutableListOf<String>()
@@ -504,6 +514,7 @@ class OperatorLoqiWriter private constructor(
         override fun process(op: LogicalOr) = Precedence.OR
 
         override fun process(op: AddRelationshipLink) = Precedence.ADD_RELATIONSHIP
+        override fun process(op: RemoveRelationshipLink) = Precedence.ADD_RELATIONSHIP
         override fun process(op: AddNewObject) = Precedence.LITERAL
         override fun process(op: CallProcedure) = Precedence.LITERAL
 

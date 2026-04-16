@@ -181,6 +181,15 @@ class OperatorLoqiBuilder(
         )
     }
 
+    override fun visitRemoveRelationshipExp(ctx: LoqiGrammarParser.RemoveRelationshipExpContext): Operator {
+        return RemoveRelationshipLink(
+            visit(ctx.exp(0)),
+            ctx.ID().getName(),
+            getParamsValues(ctx.paramsValuesExpr()),
+            ctx.exp().drop(1).map { visit(it) }
+        )
+    }
+
     override fun visitAddNewObjectExp(ctx: LoqiGrammarParser.AddNewObjectExpContext): Operator {
         val objectDef = ObjectDefBlueprint(ctx.id().getName())
 

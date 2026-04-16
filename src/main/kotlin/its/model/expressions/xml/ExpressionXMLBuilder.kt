@@ -311,6 +311,18 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
         )
     }
 
+    @BuildForTags(["RemoveRelationshipLink"])
+    @BuildingClass(RemoveRelationshipLink::class)
+    private fun buildRemoveRelationshipLink(el: ExpressionBuildContext): RemoveRelationshipLink {
+        val relationshipName = el.getAttributeOrTakeFromChild(RELATIONSHIP_NAME, 0)
+        return RemoveRelationshipLink(
+            el.op(0),
+            relationshipName,
+            buildParamsValues(el.findChild(PARAMS_VALUES)),
+            el.operands.subList(1, el.operands.size),
+        )
+    }
+
     @BuildForTags(["AddNewObject"])
     @BuildingClass(AddNewObject::class)
     private fun buildAddNewObject(el: ExpressionBuildContext): AddNewObject {

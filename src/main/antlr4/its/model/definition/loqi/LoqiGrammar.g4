@@ -168,6 +168,7 @@ exp
     | <assoc=right>  exp '?' exp ':' exp                    #ternaryIfExp
     | '+' OBJ ':' id '(' ('{' dynamicObjStatement* '}')? metadataSection? ')' #addNewObjectExp
     | exp '+=>' ID paramsValuesExpr? '(' (exp ',')* exp ')'    #addRelationshipExp
+    | exp '-=>' ID paramsValuesExpr? '(' (exp ',')* exp ')'    #removeRelationshipExp
     | <assoc=right> exp '=' exp                             #assignExp
     | <assoc=right> IF '(' exp ')' exp (ELSE exp )?                  #ifExp
     | '{' ( exp (';' exp)* ';'? )? '}'                                    #blockExp
