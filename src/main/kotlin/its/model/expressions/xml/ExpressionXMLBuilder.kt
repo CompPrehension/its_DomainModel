@@ -64,6 +64,7 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
     private const val TARGET = "target"
 
     private const val PARAMS_VALUES = "ParamsValues"
+    private const val APPLY_IF = "ApplyIf"
 
     class ExpressionBuildContext(
         el: Element,
@@ -192,8 +193,11 @@ object ExpressionXMLBuilder : XMLBuilder<ExpressionXMLBuilder.ExpressionBuildCon
             objectDef.relationships.add(
                 RelationshipLinkBlueprint(
                     relationshipEl.getRequiredAttribute(RELATIONSHIP_NAME),
-                    relationshipEl.getChildren().filter { it.tagName != PARAMS_VALUES }.map(::build),
+                    relationshipEl.getChildren().filter { child ->
+                        child.tagName != PARAMS_VALUES && child.tagName != APPLY_IF
+                    }.map(::build),
                     buildDomainParamsValues(relationshipEl.findChild(PARAMS_VALUES)),
+                    relationshipEl.findChild(APPLY_IF)?.findChild()?.let(::build) ?: BooleanLiteral(true),
                 )
             )
         }

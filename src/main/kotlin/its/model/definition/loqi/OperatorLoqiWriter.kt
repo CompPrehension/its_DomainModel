@@ -383,9 +383,17 @@ class OperatorLoqiWriter private constructor(
 
     private fun writeRelationshipStatement(link: RelationshipLinkBlueprint): String {
         return asString {
-            write(link.name.toLoqiName())
-            writeDomainParams(link.params)
-            writeMultipleEnclosed("(", link.value, ",", ")")
+            if (link.applyIf == BooleanLiteral(true)) {
+                write(link.name.toLoqiName())
+                writeDomainParams(link.params)
+                writeMultipleEnclosed("(", link.value, ",", ")")
+            } else {
+                writeEnclosed("(", asString { link.applyIf.write() }, ")")
+                write(" ? ")
+                write(link.name.toLoqiName())
+                writeDomainParams(link.params)
+                writeMultipleEnclosed("(", link.value, ",", ")")
+            }
             write(" ;")
         }
     }

@@ -59,6 +59,7 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
         private const val TARGET = "target"
 
         private const val PARAMS_VALUES = "ParamsValues"
+        private const val APPLY_IF = "ApplyIf"
     }
 
     private fun Operator.createElement() : Element {
@@ -229,6 +230,9 @@ class ExpressionXMLWriter(document: Document) : XMLWriter(document), OperatorBeh
             .withAttribute(RELATIONSHIP_NAME, statement.name)
 
         createDomainParamsElement(statement.params)?.also(relationshipElement::appendChild)
+        relationshipElement.appendChild(
+            newElement(APPLY_IF).withOperand(statement.applyIf)
+        )
         statement.value.forEach { objectExpr ->
             relationshipElement.appendChild(objectExpr.createElement())
         }

@@ -16,10 +16,13 @@ interface Blueprint<T> {
 }
 
 data class RelationshipLinkBlueprint(
-    val name: String, val value: List<Operator>, val params: ParamsValues
-) : Blueprint<RelationshipLinkStatement> {
+    val name: String, val value: List<Operator>, val params: ParamsValues, val applyIf: Operator
+) : Blueprint<RelationshipLinkStatement?> {
 
-    override fun build(ctx: BlueprintContextProvider): RelationshipLinkStatement {
+    override fun build(ctx: BlueprintContextProvider): RelationshipLinkStatement? {
+        if (!(ctx.provide(this, "applyIf") as Boolean)) {
+            return null
+        }
         return RelationshipLinkStatement(
             ctx.provide(this, "owner") as ObjectDef,
             name,
@@ -48,7 +51,7 @@ class ObjectDefBlueprint(val className: String,
             else ctx.provide(bp, name)
         } as BlueprintContextProvider
         obj.definedPropertyValues.addAll(properties.map { p -> p.build(newCtx) })
-        obj.relationshipLinks.addAll(relationships.map { r -> r.build(newCtx) })
+        obj.relationshipLinks.addAll(relationships.mapNotNull { r -> r.build(newCtx) })
         return obj
     }
 }

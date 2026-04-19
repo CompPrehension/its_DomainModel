@@ -205,11 +205,22 @@ class OperatorLoqiBuilder(
                 )
             } else if (objStatement.dynamicRelationshipLinkStatement() != null) {
                 val linkStatement = objStatement.dynamicRelationshipLinkStatement()
+                val applyIf = if (linkStatement.getChild(0).text == "(") {
+                    visit(linkStatement.exp(0))
+                } else {
+                    BooleanLiteral(true)
+                }
+                val linkObjectExprs = if (linkStatement.getChild(0).text == "(") {
+                    linkStatement.exp().drop(1).map { visit(it) }
+                } else {
+                    linkStatement.exp().map { visit(it) }
+                }
                 objectDef.relationships.add(
                     RelationshipLinkBlueprint(
                         linkStatement.id().getName(),
-                        linkStatement.exp().map { visit(it) },
+                        linkObjectExprs,
                         getDomainParamsValues(linkStatement.paramsValues()),
+                        applyIf,
                     )
                 )
             } else {

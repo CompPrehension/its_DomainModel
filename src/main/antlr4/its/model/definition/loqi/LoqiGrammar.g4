@@ -85,7 +85,9 @@ relationshipLinkStatement : id paramsValues? '(' idList ')' ';' ;
 
 dynamicPropertyValueStatement : id paramsValues? '=' exp ';' ;
 
-dynamicRelationshipLinkStatement : id paramsValues? '(' exp (',' exp)* ','? ')' ';' ;
+dynamicRelationshipLinkStatement : id paramsValues? '(' exp (',' exp)* ','? ')' ';'
+                                 | '(' exp ')' '?' id paramsValues? '(' exp (',' exp)* ','? ')' ';'
+;
 
 varDecl :  varLeftPart id;
 
