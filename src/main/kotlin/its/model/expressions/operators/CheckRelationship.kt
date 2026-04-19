@@ -60,6 +60,9 @@ class CheckRelationship(
         val relationship = getRelationship(clazz, results) ?: return type
 
         paramsValues.validatePartial(relationship.effectiveParams, this, domainModel, results, context)
+        if (objectExprs.isEmpty()) {
+            return type
+        }
 
         val isCorrectObjectCount = objectExprs.size == relationship.objectClassNames.size
         results.checkConforming(

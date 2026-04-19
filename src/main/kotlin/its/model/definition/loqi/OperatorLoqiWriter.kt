@@ -142,19 +142,13 @@ class OperatorLoqiWriter private constructor(
     override fun process(op: CheckRelationship) {
         writeAndContinue(
             asString { op.subjectExpr.writeLeft(op) },
-            "=>"
-                + op.relationshipName.toLoqiName()
-                + asString { writeParams(op.paramsValues) }
-                + asString { writeMultipleEnclosed("(", op.objectExprs, ",", ")") },
+            asString { writeRelationshipAccess(op.relationshipName, op.paramsValues, op.objectExprs) },
         )
     }
 
     override fun process(op: GetRelationshipParamValue) {
         writeAndContinue(asString { op.subjectExpr.writeLeft(op) },
-            "=>"
-                + op.relationshipName.toLoqiName()
-                + asString { writeParams(op.paramsValues) }
-                + asString { writeMultipleEnclosed("(", op.objectExprs, ",", ")") },
+            asString { writeRelationshipAccess(op.relationshipName, op.paramsValues, op.objectExprs) },
             ".${op.paramName.toLoqiName()}"
         )
     }
@@ -163,6 +157,17 @@ class OperatorLoqiWriter private constructor(
         left.writeLeft(op)
         write(" ${opStr.trim()} ")
         right.writeRight(op)
+    }
+
+    private fun writeRelationshipAccess(
+        relationshipName: String,
+        paramsValues: ParamsValuesExprList,
+        objectExprs: Collection<Operator>,
+    ) {
+        write("=>")
+        write(relationshipName.toLoqiName())
+        writeParams(paramsValues)
+        writeMultipleEnclosed("(", objectExprs, ",", ")")
     }
 
     override fun process(op: Cast) {

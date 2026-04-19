@@ -155,20 +155,20 @@ class OperatorLoqiBuilder(
 
     override fun visitGetRelationshipParamExp(ctx: LoqiGrammarParser.GetRelationshipParamExpContext): Operator {
         return GetRelationshipParamValue(
-            visit(ctx.exp(0)),
+            visit(ctx.exp()),
             ctx.ID(0).getName(),
             getParamsValues(ctx.paramsValuesExpr()),
-            ctx.exp().drop(1).map { visit(it) },
+            ctx.relationshipObjectArgs().exp().map { visit(it) },
             ctx.ID(1).getName(),
         )
     }
 
     override fun visitCheckRelationshipExp(ctx: LoqiGrammarParser.CheckRelationshipExpContext): Operator {
         return CheckRelationship(
-            visit(ctx.exp(0)),
+            visit(ctx.exp()),
             ctx.ID().getName(),
             getParamsValues(ctx.paramsValuesExpr()),
-            ctx.exp().drop(1).map { visit(it) }
+            ctx.relationshipObjectArgs()?.exp()?.map { visit(it) } ?: emptyList()
         )
     }
 
