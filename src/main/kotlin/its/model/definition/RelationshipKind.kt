@@ -67,35 +67,55 @@ class BaseRelationshipKind(
  * Квантификатор отношения (какое кол-во связей допустимо)
  */
 data class LinkQuantifier(
-    val subjCount: Int = ANY_COUNT,
-    val objCount: Int = ANY_COUNT,
+    val subjCount: LinkCount = LinkCount.AnyCount,
+    val objCount: LinkCount = LinkCount.AnyCount,
 ) : Describable {
     val reversed: LinkQuantifier
         get() = LinkQuantifier(objCount, subjCount)
 
     companion object {
         @JvmStatic
-        val ANY_COUNT = Int.MAX_VALUE
+        fun OneToOne() = LinkQuantifier(LinkCount.Exact(1), LinkCount.Exact(1))
 
         @JvmStatic
-        fun OneToOne() = LinkQuantifier(1, 1)
+        fun OneToMany() = LinkQuantifier(LinkCount.Exact(1), LinkCount.AnyCount)
 
         @JvmStatic
-        fun OneToMany() = LinkQuantifier(1, ANY_COUNT)
+        fun ManyToOne() = LinkQuantifier(LinkCount.AnyCount, LinkCount.Exact(1))
 
         @JvmStatic
-        fun ManyToOne() = LinkQuantifier(ANY_COUNT, 1)
-
-        @JvmStatic
-        fun ManyToMany() = LinkQuantifier(ANY_COUNT, ANY_COUNT)
-
-        private fun Int.toLinkCount(): String {
-            return if (this == ANY_COUNT) "*" else this.toString()
-        }
+        fun ManyToMany() = LinkQuantifier(LinkCount.AnyCount, LinkCount.AnyCount)
     }
 
-    override val description = "{${subjCount.toLinkCount()} -> ${objCount.toLinkCount()}}"
+    override val description = "{${subjCount.description} -> ${objCount.description}}"
     override fun toString() = description
+}
+
+sealed class LinkCount : Describable {
+    abstract fun accepts(actualCount: Int): Boolean
+
+    open val isExactOne: Boolean
+        get() = false
+
+    object AnyCount : LinkCount() {
+        override fun accepts(actualCount: Int) = true
+        override val description = "*"
+    }
+
+    object Optional : LinkCount() {
+        override fun accepts(actualCount: Int) = actualCount in 0..1
+        override val description = "?"
+    }
+
+    data class Exact(val count: Int) : LinkCount() {
+        init {
+            require(count >= 0) { "Link count must be non-negative" }
+        }
+
+        override fun accepts(actualCount: Int) = actualCount == count
+        override val isExactOne = count == 1
+        override val description = count.toString()
+    }
 }
 
 

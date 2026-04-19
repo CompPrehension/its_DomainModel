@@ -113,27 +113,29 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
                 subjects[obj to relationship] = (subjects[obj to relationship] ?: 0) + 1
             }
         }
-        for ((subjToRel, count) in objects) {
-            val subj = subjToRel.first
-            val relationship = subjToRel.second
-
+        val relationships = domainModel.classes.flatMap { it.declaredRelationships }.filter { it.isBinary }
+        for (relationship in relationships) {
+            val subjectClass = relationship.getKnownSubjectClass(results) ?: continue
+            val objectClass = relationship.getKnownObjectClasses(results).singleOrNull() ?: continue
             val quantifier = relationship.effectiveQuantifier
-            results.checkValid(
-                objects[subj to relationship]!! <= quantifier.objCount,
-                "$subj has too many outgoing links of $relationship: " +
-                        "it is a subject of $count links, but the relationship is quantified as $quantifier"
-            )
-        }
-        for ((objToRel, count) in subjects) {
-            val obj = objToRel.first
-            val relationship = objToRel.second
 
-            val quantifier = relationship.effectiveQuantifier
-            results.checkValid(
-                subjects[obj to relationship]!! <= quantifier.subjCount,
-                "$obj has too many incoming links of $relationship: " +
-                        "it is an object of $count links, but the relationship is quantified as $quantifier"
-            )
+            for (subj in subjectClass.instances) {
+                val actualCount = objects[subj to relationship] ?: 0
+                results.checkValid(
+                    quantifier.objCount.accepts(actualCount),
+                    "$subj has invalid outgoing links of $relationship: " +
+                            "it is a subject of $actualCount links, but the relationship is quantified as $quantifier"
+                )
+            }
+
+            for (obj in objectClass.instances) {
+                val actualCount = subjects[obj to relationship] ?: 0
+                results.checkValid(
+                    quantifier.subjCount.accepts(actualCount),
+                    "$obj has invalid incoming links of $relationship: " +
+                            "it is an object of $actualCount links, but the relationship is quantified as $quantifier"
+                )
+            }
         }
     }
 }
