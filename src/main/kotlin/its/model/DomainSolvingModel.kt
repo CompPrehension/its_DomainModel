@@ -100,7 +100,7 @@ class DomainSolvingModel(
                     name to DecisionTreeXMLBuilder.fromXMLFile(fileUrl.toURI().toString())
                 }
                 .toMap()
-            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.loqi"))
+            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.(loqi|tpg)"))
                 .map { (fileUrl, regexMatch) ->
                     var (name) = regexMatch.destructured
                     if (name.startsWith("_")) {
