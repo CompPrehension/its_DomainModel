@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>its_DomainModel</artifactId>
-    <groupId>com.github.Max-Person</groupId>
+    <groupId>com.github.CompPrehension</groupId>
     <version>3.0.0-alpha.7</version>
     <packaging>jar</packaging>
 
