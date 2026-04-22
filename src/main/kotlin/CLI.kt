@@ -2,7 +2,11 @@ import its.model.DomainSolvingModel
 import its.model.definition.DomainModel
 import its.model.definition.loqi.DomainLoqiBuilder
 import its.model.definition.loqi.DomainLoqiWriter
+import its.model.definition.loqi.LoqiWriteOptions
 import its.model.definition.loqi.TreeLoqiBuilder
+import its.model.definition.rdf.DomainRDFFiller
+import its.model.definition.rdf.DomainRDFWriter
+import its.model.definition.rdf.RDFUtils
 import its.model.nodes.DecisionTree
 import its.model.nodes.xml.DecisionTreeXMLWriter
 import picocli.CommandLine
@@ -21,6 +25,8 @@ import kotlin.io.path.reader
         ValidateDomainSolvingModelCommand::class,
         TreeLoqiToXmlCommand::class,
         ValidateDomainLoqiCommand::class,
+        DomainToRdfCommand::class,
+        RdfToDomainLoqiCommand::class,
     ],
 )
 class CLI : Runnable {
@@ -193,6 +199,201 @@ class ValidateDomainLoqiCommand : Callable<Int> {
     }
 }
 
+@Command(
+    name = "domain-to-rdf",
+    mixinStandardHelpOptions = true,
+    description = ["Собирает конкретный домен из DomainSolvingModel и записывает его в RDF TTL"],
+)
+class DomainToRdfCommand : Callable<Int> {
+
+    @Parameters(
+        index = "0",
+        paramLabel = "MODEL_DIR",
+        description = ["Директория DomainSolvingModel"],
+    )
+    lateinit var modelDir: Path
+
+    @Option(
+        names = ["--build-method"],
+        description = ["Способ сборки DomainSolvingModel: \${COMPLETION-CANDIDATES}"],
+        defaultValue = "LOQI",
+    )
+    lateinit var buildMethod: DomainSolvingModel.BuildMethod
+
+    @Option(
+        names = ["--tag"],
+        paramLabel = "TAG",
+        description = ["Тег из DomainSolvingModel, который нужно учесть при объединении"],
+    )
+    var tag: String? = null
+
+    @Option(
+        names = ["--domain-loqi"],
+        paramLabel = "DOMAIN_LOQI",
+        description = ["Дополнительный domain LOQI файл, который нужно объединить с базовым доменом"],
+    )
+    var domainLoqiFile: Path? = null
+
+    @Option(
+        names = ["-o", "--output"],
+        paramLabel = "TTL_FILE",
+        description = ["Куда сохранить TTL. Если не указано, TTL печатается в stdout"],
+    )
+    var outputFile: Path? = null
+
+    @Option(
+        names = ["--base-prefix"],
+        paramLabel = "PREFIX",
+        description = ["Базовый RDF prefix для создаваемых ресурсов"],
+        defaultValue = RDFUtils.POAS_PREF,
+    )
+    lateinit var basePrefix: String
+
+    @Option(
+        names = ["--old-nary-compat"],
+        description = ["Использовать старое совместимое представление n-арных отношений"],
+        defaultValue = "false",
+    )
+    var useOldNaryCompat: Boolean = false
+
+    override fun call(): Int {
+        val model = DomainSolvingModel(modelDir.toString(), buildMethod)
+        val domain = resolveConcreteDomain(model, tag, domainLoqiFile)
+        domain.validateAndThrow()
+
+        val rdfOptions = buildSet {
+            if (useOldNaryCompat) add(DomainRDFWriter.Option.NARY_RELATIONSHIPS_OLD_COMPAT)
+        }
+
+        if (outputFile != null) {
+            outputFile!!.bufferedWriter().use { writer ->
+                DomainRDFWriter.saveDomain(domain, writer, basePrefix, rdfOptions)
+            }
+            println("RDF saved to ${outputFile!!.toAbsolutePath()}")
+        } else {
+            System.out.writer().use { writer ->
+                DomainRDFWriter.saveDomain(domain, writer, basePrefix, rdfOptions)
+            }
+        }
+
+        return 0
+    }
+}
+
+@Command(
+    name = "rdf-to-domain-loqi",
+    mixinStandardHelpOptions = true,
+    description = ["Заполняет конкретный домен из DomainSolvingModel данными из RDF TTL и сохраняет в LOQI"],
+)
+class RdfToDomainLoqiCommand : Callable<Int> {
+
+    @Parameters(
+        index = "0",
+        paramLabel = "MODEL_DIR",
+        description = ["Директория DomainSolvingModel"],
+    )
+    lateinit var modelDir: Path
+
+    @Parameters(
+        index = "1",
+        paramLabel = "RDF_TTL",
+        description = ["Путь к RDF Turtle файлу"],
+    )
+    lateinit var rdfTtlFile: Path
+
+    @Option(
+        names = ["--build-method"],
+        description = ["Способ сборки DomainSolvingModel: \${COMPLETION-CANDIDATES}"],
+        defaultValue = "LOQI",
+    )
+    lateinit var buildMethod: DomainSolvingModel.BuildMethod
+
+    @Option(
+        names = ["--tag"],
+        paramLabel = "TAG",
+        description = ["Тег из DomainSolvingModel, который нужно учесть при объединении"],
+    )
+    var tag: String? = null
+
+    @Option(
+        names = ["--domain-loqi"],
+        paramLabel = "DOMAIN_LOQI",
+        description = ["Дополнительный domain LOQI файл, который нужно объединить с базовым доменом до заполнения RDF"],
+    )
+    var domainLoqiFile: Path? = null
+
+    @Option(
+        names = ["-o", "--output"],
+        paramLabel = "DOMAIN_LOQI",
+        description = ["Куда сохранить LOQI. Если не указано, LOQI печатается в stdout"],
+    )
+    var outputFile: Path? = null
+
+    @Option(
+        names = ["--base-prefix"],
+        paramLabel = "PREFIX",
+        description = ["Базовый RDF prefix. Если не указан, будет взят из TTL или значение по умолчанию"],
+    )
+    var basePrefix: String? = null
+
+    @Option(
+        names = ["--old-nary-compat"],
+        description = ["Использовать старое совместимое представление n-арных отношений"],
+        defaultValue = "false",
+    )
+    var useOldNaryCompat: Boolean = false
+
+    @Option(
+        names = ["--throw-invalid-meta"],
+        description = ["Падать, если предполагаемые метаданные в RDF не являются literal-значениями"],
+        defaultValue = "false",
+    )
+    var throwInvalidMeta: Boolean = false
+
+    @Option(
+        names = ["--separate-metadata"],
+        description = ["При записи LOQI вынести metadata в отдельные секции"],
+        defaultValue = "false",
+    )
+    var separateMetadata: Boolean = false
+
+    @Option(
+        names = ["--separate-class-property-values"],
+        description = ["При записи LOQI вынести значения свойств классов в отдельные секции"],
+        defaultValue = "false",
+    )
+    var separateClassPropertyValues: Boolean = false
+
+    override fun call(): Int {
+        val model = DomainSolvingModel(modelDir.toString(), buildMethod)
+        val domain = resolveConcreteDomain(model, tag, domainLoqiFile)
+
+        val rdfFillOptions = buildSet {
+            if (useOldNaryCompat) add(DomainRDFFiller.Option.NARY_RELATIONSHIPS_OLD_COMPAT)
+            if (throwInvalidMeta) add(DomainRDFFiller.Option.THROW_INVALID_META)
+        }
+        DomainRDFFiller.fillDomain(domain, rdfTtlFile.toString(), rdfFillOptions, basePrefix)
+
+        val loqiWriteOptions = buildSet {
+            if (separateMetadata) add(LoqiWriteOptions.SEPARATE_METADATA)
+            if (separateClassPropertyValues) add(LoqiWriteOptions.SEPARATE_CLASS_PROPERTY_VALUES)
+        }
+
+        if (outputFile != null) {
+            outputFile!!.bufferedWriter().use { writer ->
+                DomainLoqiWriter.saveDomain(domain, writer, loqiWriteOptions)
+            }
+            println("LOQI saved to ${outputFile!!.toAbsolutePath()}")
+        } else {
+            System.out.writer().use { writer ->
+                DomainLoqiWriter.saveDomain(domain, writer, loqiWriteOptions)
+            }
+        }
+
+        return 0
+    }
+}
+
 private fun resolveDomain(model: DomainSolvingModel, tag: String?): DomainModel {
     if (tag == null) {
         return model.domainModel
@@ -203,6 +404,15 @@ private fun resolveDomain(model: DomainSolvingModel, tag: String?): DomainModel 
         "Tag '$tag' not found. Known tags: $knownTags"
     }
     return model.getMergedTagDomain(tag)
+}
+
+private fun resolveConcreteDomain(model: DomainSolvingModel, tag: String?, domainLoqiFile: Path?): DomainModel {
+    val domain = resolveDomain(model, tag).copy()
+    if (domainLoqiFile != null) {
+        val extraDomain = domainLoqiFile.reader().use(DomainLoqiBuilder::buildDomain)
+        domain.addMerge(extraDomain)
+    }
+    return domain
 }
 
 fun main(args: Array<String>) {
