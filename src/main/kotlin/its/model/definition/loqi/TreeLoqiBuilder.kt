@@ -295,6 +295,7 @@ class TreeLoqiBuilder(
             (visitAndObtainBool(b.exp(), b.outcomeType()) != null || visitExp(b.exp()) !is DecisionTreeVarLiteral) && b.thoughtBranch() != null
         })
 
+
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
             b.exp() != null && visitExp(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
         })
@@ -305,11 +306,6 @@ class TreeLoqiBuilder(
 
         if (outBranch.count() > 1) {
             throw LoqiDomainBuildException("You can redirect only one outcome branch");
-        } else if (
-            !outBranch.isEmpty() &&
-            parseBranchResult(outBranch[0].exp(), outBranch[0].outcomeType()) == null
-        ) {
-            throw LoqiDomainBuildException("You can redirect only one outcome branch, not thought branch");
         }
 
         val outcomeOut = if (outBranch.isEmpty()) null else {
@@ -489,14 +485,10 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Question cannot have thought branches")
         }
 
-        if (branches.out == null) {
-            throw LoqiDomainBuildException("Specify out branch for this question")
-        }
-
         val trivExpr = if (ctx.exp(1) != null) visitExp(ctx.exp(1)) else null;
         var isSwitch = !ctx.getTokens(SWITCH).isEmpty();
         return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr).also {
-            outMap[it] = branches.out;
+            if (branches.out != null) outMap[it] = branches.out;
         }
     }
 
