@@ -277,7 +277,7 @@ class TreeLoqiBuilder(
         return null
     }
 
-    fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext): BranchInfo<*> {
+    fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext, allowOnlyResultOut: Boolean = false): BranchInfo<*> {
         if (ctx.branches() == null) {
             val exp = visitExp(ctx.exp()).unwrap();
             if (exp !is Boolean) {
@@ -306,6 +306,12 @@ class TreeLoqiBuilder(
 
         if (outBranch.count() > 1) {
             throw LoqiDomainBuildException("You can redirect only one outcome branch");
+        } else if (
+            allowOnlyResultOut && !outBranch.isEmpty() &&
+            parseBranchResult(outBranch[0].exp(), outBranch[0].outcomeType()) == null
+        ) {
+            // если требуется обязательно делать out как boolean/result
+            throw LoqiDomainBuildException("You can redirect only one resulting (boolean or branch result) outcome branch");
         }
 
         val outcomeOut = if (outBranch.isEmpty()) null else {
@@ -512,7 +518,7 @@ class TreeLoqiBuilder(
                 Outcome(true, DummyNode())
             )))
         } else {
-            visitExpressionBranches(ctx.expBranches())
+            visitExpressionBranches(ctx.expBranches(), true)
         }
 
         if (!branches.bodyBranches.isEmpty()) {
