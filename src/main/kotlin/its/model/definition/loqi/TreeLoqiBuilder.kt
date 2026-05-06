@@ -658,7 +658,7 @@ class TreeLoqiBuilder(
             listOf(),decls, boolOutcomes).also {
                 if (branches.out != null) {
                     outMap[it] = branches.out as Boolean
-                } else {
+                } else if (!boolOutcomes.containsKey(true)) {
                     outMap[it] = true
                 }
         }
