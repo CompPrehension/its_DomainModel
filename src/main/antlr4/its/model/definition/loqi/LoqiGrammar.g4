@@ -105,9 +105,9 @@ metaRef : OBJ? id
         | enumValueRef
         ;
 
-metadataSection : '[' metadataPropertyDecl* ']' ;
+metadataSection : '[' (metadataPropertyDecl (';' metadataPropertyDecl)* ';'?)? ']' ;
 
-metadataPropertyDecl : (id '.')? id '=' value ';' ;
+metadataPropertyDecl : (id '.')? id '=' value ;
 
 // Прочее -----------------
 
@@ -215,15 +215,15 @@ typedVar: id ':' type;
 
 typedVarLinear: type id;
 
-stmts : stmt+ ;
+stmts : stmt (';' stmt)* ';'? ;
 
-stmt: concludeBranchResult ';'
-    | whileCycle (AS id)? ';'
-    | branchAggregation (AS id)? ';'
-    | cycleAggregation (AS id)? ';'
-    | findAction (AS id)? ';'
-    | question (AS id)? ';'
-    | callStmt ';'
+stmt: concludeBranchResult
+    | whileCycle (AS id)?
+    | branchAggregation (AS id)?
+    | cycleAggregation (AS id)?
+    | findAction (AS id)?
+    | question (AS id)?
+    | callStmt
     ;
 
 whileCycle: WHILE '(' exp ')' aggBranches;
