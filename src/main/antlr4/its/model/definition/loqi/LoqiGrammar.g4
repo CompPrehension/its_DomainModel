@@ -272,11 +272,14 @@ out: OUT
    | OUT '[' ID ']'
    ;
 
-branch: outcomeType arrow thoughtBranch ';'?
+branch: outcomeTypeList arrow thoughtBranch ';'?
       | outcomeType arrow OUT ';'
       | exp arrow thoughtBranch ';'?
       | exp arrow OUT ';'
       ;
+
+outcomeTypeList: outcomeType (',' outcomeType)* ','?
+               ;
 
 outcomeType: CORRECT
            | ERROR

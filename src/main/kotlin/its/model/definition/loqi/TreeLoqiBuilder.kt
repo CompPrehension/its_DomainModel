@@ -277,6 +277,41 @@ class TreeLoqiBuilder(
         return null;
     }
 
+    private fun parseBranchResult(ctx: LoqiGrammarParser.OutcomeTypeContext): BranchResult {
+        return parseBranchResult(ctx.text)
+    }
+
+    private fun <T> checkNoDuplicateOutcomeBranches(outcomes: List<Outcome<T>>) {
+        val seen = HashSet<T>()
+        outcomes.forEach { outcome ->
+            if (!seen.add(outcome.key)) {
+                throw LoqiDomainBuildException("Duplicate outcome branch for `${outcome.key}`")
+            }
+        }
+    }
+
+    private fun isExpressionOutcomeBranch(ctx: LoqiGrammarParser.BranchContext): Boolean {
+        return ctx.thoughtBranch() != null &&
+            (
+                ctx.outcomeTypeList() != null ||
+                    (
+                        ctx.exp() != null &&
+                            (
+                                visitAndObtainBool(ctx.exp(), null) != null ||
+                                    visitExp(ctx.exp()) !is DecisionTreeVarLiteral
+                            )
+                    )
+            )
+    }
+
+    private fun isBranchResultOutcomeBranch(ctx: LoqiGrammarParser.BranchContext): Boolean {
+        return ctx.thoughtBranch() != null &&
+            (
+                ctx.outcomeTypeList() != null ||
+                    (ctx.exp() != null && parseBranchResult(ctx.exp(), null) != null)
+            )
+    }
+
     override fun visitWhileCycle(ctx: LoqiGrammarParser.WhileCycleContext): WhileCycleNode {
         val branches = visitAggregationBranches(ctx.aggBranches(), BranchResult.NULL)
 
@@ -295,23 +330,41 @@ class TreeLoqiBuilder(
     }
 
     fun visitBranchResultOutcomes(list: List<LoqiGrammarParser.BranchContext>): Outcomes<BranchResult> {
-        return Outcomes(list.map { res ->
-            Outcome(
-                parseBranchResult(res.exp(), res.outcomeType()) as BranchResult,
-                visitThoughtBranch(res.thoughtBranch()).start
-            ).also { metaAliasForBranch(res, it) }
-        }.toMutableList())
+        val outcomes = list.flatMap { res ->
+            val keys = if (res.outcomeTypeList() != null) {
+                res.outcomeTypeList().outcomeType().map { parseBranchResult(it) }
+            } else {
+                listOf(parseBranchResult(res.exp(), null) ?: throw ThisShouldNotHappen())
+            }
+            keys.map { key ->
+                Outcome(key, visitThoughtBranch(res.thoughtBranch()).start)
+                    .also { metaAliasForBranch(res, it) }
+            }
+        }.toMutableList()
+        checkNoDuplicateOutcomeBranches(outcomes)
+        return Outcomes(outcomes)
     }
 
     fun visitExprOutcomes(list: List<LoqiGrammarParser.BranchContext>): Outcomes<Any> {
-        return Outcomes(list.map { res ->
-            val exp = if (res.exp() != null) visitExp(res.exp()).unwrap() else visitAndObtainBool(res.exp(), res.outcomeType())
-            if (exp == null) {
-                throw ThisShouldNotHappen()
+        val outcomes = list.flatMap { res ->
+            val keys = if (res.outcomeTypeList() != null) {
+                res.outcomeTypeList().outcomeType().map { outcomeType ->
+                    visitAndObtainBool(null, outcomeType)
+                        ?: throw LoqiDomainBuildException(
+                            outcomeType.start.line,
+                            "Expression branch outcome `${outcomeType.text}` cannot be converted to boolean"
+                        )
+                }
+            } else {
+                listOf(visitExp(res.exp()).unwrap())
             }
-            Outcome(exp,
-                visitThoughtBranch(res.thoughtBranch()).start).also { metaAliasForBranch(res, it)}
-        }.toMutableList())
+            keys.map { key ->
+                Outcome(key, visitThoughtBranch(res.thoughtBranch()).start)
+                    .also { metaAliasForBranch(res, it)}
+            }
+        }.toMutableList()
+        checkNoDuplicateOutcomeBranches(outcomes)
+        return Outcomes(outcomes)
     }
 
     /**
@@ -346,12 +399,14 @@ class TreeLoqiBuilder(
         }
 
         val outcomes = visitExprOutcomes(ctx.branches().branch().filter { b ->
-            (visitAndObtainBool(b.exp(), b.outcomeType()) != null || visitExp(b.exp()) !is DecisionTreeVarLiteral) && b.thoughtBranch() != null
+            isExpressionOutcomeBranch(b)
         })
 
-
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
-            b.exp() != null && visitExp(b.exp()) is DecisionTreeVarLiteral && b.thoughtBranch() != null
+            !isExpressionOutcomeBranch(b) &&
+                b.exp() != null &&
+                visitExp(b.exp()) is DecisionTreeVarLiteral &&
+                b.thoughtBranch() != null
         })
 
         val outBranch = ctx.branches().branch().filter { branchContext ->
@@ -376,7 +431,11 @@ class TreeLoqiBuilder(
             }
         }
 
-        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
+        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.isNotEmpty()) {
+            throw LoqiDomainBuildException("Duplicate outcome branch for `$outcomeOut`")
+        }
+
+        if (outcomeOut != null) {
             outcomes.add(Outcome(outcomeOut, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
         }
         
@@ -396,11 +455,11 @@ class TreeLoqiBuilder(
         }
 
         val outcomes = visitBranchResultOutcomes(ctx.branches().branch().filter { b ->
-            parseBranchResult(b.exp(), b.outcomeType()) != null && b.thoughtBranch() != null
+            isBranchResultOutcomeBranch(b)
         })
 
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
-            b.thoughtBranch() != null && parseBranchResult(b.exp(), b.outcomeType()) == null
+            b.thoughtBranch() != null && !isBranchResultOutcomeBranch(b)
         })
 
         val outBranch = ctx.branches().branch().filter { branchContext ->
@@ -415,9 +474,21 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("You can redirect only one outcome branch, not thought branch");
         }
 
-        val outcomeOut = if (outBranch.isEmpty()) defaultOut else parseBranchResult(outBranch[0].outcomeType().text)
+        var outcomeOut = if (outBranch.isEmpty()) {
+            defaultOut
+        } else {
+            parseBranchResult(outBranch[0].outcomeType().text)
+        }
 
-        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.none()) {
+        if (outcomes.filter { value -> value.key == outcomeOut}.isNotEmpty() && outcomeOut == defaultOut) {
+            outcomeOut = null;
+        }
+
+        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.isNotEmpty()) {
+            throw LoqiDomainBuildException("Duplicate outcome branch for `$outcomeOut`")
+        }
+
+        if (outcomeOut != null) {
             outcomes.add(Outcome(outcomeOut, DummyNode()).also{
                 if (!outBranch.isEmpty()) metaAliasForBranch(outBranch[0], it)
             });
