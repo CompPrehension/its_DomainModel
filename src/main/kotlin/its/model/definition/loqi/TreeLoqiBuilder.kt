@@ -34,6 +34,16 @@ class TreeLoqiBuilder(
 
     data class BranchInfo<T>(val out: T?, val bodyBranches: List<ThoughtBranch>, val outcomes: Outcomes<T>)
 
+    private data class BuiltStatement(
+        val start: DecisionTreeNode,
+        val tail: DecisionTreeNode,
+    )
+
+    private data class BuiltThoughtBranch(
+        val branch: ThoughtBranch,
+        val tail: DecisionTreeNode,
+    )
+
     private data class RegisteredFragment(
         val definition: FragmentDef,
         val body: ThoughtBranchContext,
@@ -92,6 +102,10 @@ class TreeLoqiBuilder(
     }
 
     override fun visitCallStmt(ctx: LoqiGrammarParser.CallStmtContext): DecisionTreeNode {
+        return visitCallStmtAsBuiltStatement(ctx).start
+    }
+
+    private fun visitCallStmtAsBuiltStatement(ctx: LoqiGrammarParser.CallStmtContext): BuiltStatement {
         resolveFragment(ctx.namespaceResolution())?.let { fragment ->
             return inlineFragment(fragment, ctx)
         }
@@ -99,41 +113,112 @@ class TreeLoqiBuilder(
         val procedure = resolveProcedure(ctx.namespaceResolution())
             ?: throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
         val args = buildCallArgs(ctx.callArgs())
-        return procedure.callNode(args, DummyNode())
+        return procedure.callNode(args, DummyNode()).asBuiltStatement()
     }
 
     override fun visitThoughtBranch(ctx: LoqiGrammarParser.ThoughtBranchContext): ThoughtBranch {
+        return buildThoughtBranch(ctx).branch
+    }
+
+    private fun buildThoughtBranch(
+        ctx: LoqiGrammarParser.ThoughtBranchContext,
+        leaveTailOpen: Boolean = false,
+    ): BuiltThoughtBranch {
         if (ctx.stmts().stmt().isEmpty()) {
             throw LoqiDomainBuildException(ctx.stmts().start.line, "Thought branch is empty")
         }
         val stmts = ctx.stmts().stmt();
-        val first = visitStmt(stmts[0])
-        var prev = first
+        val first = buildStmt(stmts[0])
+        var prev = first.tail
         for (i in 1 until stmts.size) {
-            val newStmt = visitStmt(stmts[i]);
-            if (prev is ProcedureCallNode && prev.next is DummyNode) {
-                prev.next = newStmt
-            } else if (prev in outMap && prev is LinkNode<*>) {
-                val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
-                if (outcome.count() != 1) {
-                    throw ThisShouldNotHappen()
-                } else {
-                    prev.outcomes.remove(outcome[0])
-                    prev.outcomes.add(Outcome(outMap[prev] as Any, newStmt)
-                        .also {checkResultReachability(it)}
-                        .also {
-                            val alias = findAlias(outcome[0])
-                            aliases[alias]?.remove(outcome[0])
-                            aliases[alias]?.add(it)
-                        }
-                    )
-                }
-            } else {
-                throw LoqiDomainBuildException("Statement can't be reached")
+            val newStmt = buildStmt(stmts[i]);
+            domainOpAt(stmts[i].start.line) {
+                connectToNextStatement(prev, newStmt.start)
             }
-            prev = newStmt;
+            prev = newStmt.tail;
         }
 
+        if (!leaveTailOpen) {
+            domainOpAt(ctx.stop?.line ?: ctx.start.line) {
+                closeOutRedirect(prev)
+            }
+        }
+        return BuiltThoughtBranch(
+            ThoughtBranch(first.start).also {
+                domainOpAt(ctx.start.line) {
+                    checkResultReachability(it)
+                }
+            },
+            prev
+        )
+    }
+
+    override fun visitStmt(ctx: LoqiGrammarParser.StmtContext): DecisionTreeNode {
+        return buildStmt(ctx).start
+    }
+
+    private fun buildStmt(ctx: LoqiGrammarParser.StmtContext): BuiltStatement {
+        val child = ctx.getChild(0)
+
+        val result = if (child is LoqiGrammarParser.ConcludeBranchResultContext) {
+            domainOpAt(ctx.start.line) { visitConcludeBranchResult(child).asBuiltStatement() }
+        } else if (child is LoqiGrammarParser.BranchAggregationContext) {
+            domainOpAt(ctx.start.line) { visitBranchAggregation(child).asBuiltStatement() }
+        } else if (child is LoqiGrammarParser.CycleAggregationContext) {
+            domainOpAt(ctx.start.line) { visitCycleAggregation(child).asBuiltStatement() }
+        } else if (child is LoqiGrammarParser.WhileCycleContext) {
+            domainOpAt(ctx.start.line) { visitWhileCycle(child).asBuiltStatement() }
+        } else if (child is LoqiGrammarParser.FindActionContext) {
+            domainOpAt(ctx.start.line) { visitFindAction(child).asBuiltStatement() }
+        } else if (child is LoqiGrammarParser.QuestionContext) {
+            domainOpAt(ctx.start.line) { visitQuestion(child).asBuiltStatement() }
+        } else if (child is LoqiGrammarParser.CallStmtContext) {
+            domainOpAt(ctx.start.line) { visitCallStmtAsBuiltStatement(child) }
+        } else {
+            throw ThisShouldNotHappen()
+        }
+
+        if (ctx.AS() != null && ctx.id() != null) {
+            if (ctx.id().text !in aliases) {
+                aliases[ctx.id().text] = HashSet();
+            }
+            aliases[ctx.id().text]?.add(result.start);
+        }
+        return result
+    }
+
+    private fun DecisionTreeNode.asBuiltStatement(): BuiltStatement {
+        return BuiltStatement(this, this)
+    }
+
+    private fun isInliningFragment(): Boolean {
+        return !fragmentInliningStack.isEmpty()
+    }
+
+    private fun connectToNextStatement(prev: DecisionTreeNode, next: DecisionTreeNode) {
+        if (prev is ProcedureCallNode && prev.next is DummyNode) {
+            prev.next = next
+        } else if (prev in outMap && prev is LinkNode<*>) {
+            val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
+            if (outcome.count() != 1) {
+                throw ThisShouldNotHappen()
+            } else {
+                prev.outcomes.remove(outcome[0])
+                prev.outcomes.add(Outcome(outMap[prev] as Any, next)
+                    .also {checkResultReachability(it)}
+                    .also {
+                        val alias = findAlias(outcome[0])
+                        aliases[alias]?.remove(outcome[0])
+                        aliases[alias]?.add(it)
+                    }
+                )
+            }
+        } else {
+            throw LoqiDomainBuildException("Statement can't be reached")
+        }
+    }
+
+    private fun closeOutRedirect(prev: DecisionTreeNode) {
         if (prev in outMap && prev is LinkNode<*>) {
             val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
             if (outcome.count() != 1) {
@@ -143,37 +228,6 @@ class TreeLoqiBuilder(
                 if (prev !is BranchAggregationNode) checkResultReachability(outcome[0], true) // так как Branch Aggregation Node может завершать ветвь
             }
         }
-        return ThoughtBranch(first).also {checkResultReachability(it)}
-    }
-
-    override fun visitStmt(ctx: LoqiGrammarParser.StmtContext): DecisionTreeNode {
-        val child = ctx.getChild(0)
-
-        val result = if (child is LoqiGrammarParser.ConcludeBranchResultContext) {
-            domainOpAt(ctx.start.line) { visitConcludeBranchResult(child) }
-        } else if (child is LoqiGrammarParser.BranchAggregationContext) {
-            domainOpAt(ctx.start.line) { visitBranchAggregation(child) }
-        } else if (child is LoqiGrammarParser.CycleAggregationContext) {
-            domainOpAt(ctx.start.line) { visitCycleAggregation(child) }
-        } else if (child is LoqiGrammarParser.WhileCycleContext) {
-            domainOpAt(ctx.start.line) { visitWhileCycle(child) }
-        } else if (child is LoqiGrammarParser.FindActionContext) {
-            domainOpAt(ctx.start.line) { visitFindAction(child) }
-        } else if (child is LoqiGrammarParser.QuestionContext) {
-            domainOpAt(ctx.start.line) { visitQuestion(child) }
-        } else if (child is LoqiGrammarParser.CallStmtContext) {
-            domainOpAt(ctx.start.line) { visitCallStmt(child) }
-        } else {
-            throw ThisShouldNotHappen()
-        }
-
-        if (ctx.AS() != null && ctx.id() != null) {
-            if (ctx.id().text !in aliases) {
-                aliases[ctx.id().text] = HashSet();
-            }
-            aliases[ctx.id().text]?.add(result);
-        }
-        return result
     }
 
     override fun visitConcludeBranchResult(ctx: LoqiGrammarParser.ConcludeBranchResultContext): DecisionTreeNode {
@@ -232,7 +286,7 @@ class TreeLoqiBuilder(
 
         return WhileCycleNode(visitExp(ctx.exp()),
             branches.bodyBranches[0],
-            Outcomes(listOf())
+            Outcomes(branches.outcomes)
         ).also {
             if (branches.out != null) {
                 outMap[it] = branches.out as Any;
@@ -335,13 +389,10 @@ class TreeLoqiBuilder(
 
         if (ctx.branches() == null) {
             val outcomeType = parseBranchResult(ctx.outcomeType().text)
-            val values = BranchResult.values()
 
-            val outcomeRawList = values.filter { value -> value != outcomeType }.map { value ->
-                Outcome(value, visitThoughtBranch(ctx.thoughtBranch()).start) }.toMutableList()
-            outcomeRawList.add(Outcome(outcomeType, DummyNode()).also{metaAliasForOut(ctx.out(), it)})
-
-            return BranchInfo(outcomeType, listOf(visitThoughtBranch(ctx.thoughtBranch())), Outcomes(outcomeRawList))
+            return BranchInfo(outcomeType, listOf(visitThoughtBranch(ctx.thoughtBranch())),
+                Outcomes(listOf(Outcome(outcomeType, DummyNode()).also{metaAliasForOut(ctx.out(), it)}))
+            )
         }
 
         val outcomes = visitBranchResultOutcomes(ctx.branches().branch().filter { b ->
@@ -679,7 +730,7 @@ class TreeLoqiBuilder(
         )
     }
 
-    private fun inlineFragment(fragment: RegisteredFragment, callCtx: CallStmtContext): DecisionTreeNode {
+    private fun inlineFragment(fragment: RegisteredFragment, callCtx: CallStmtContext): BuiltStatement {
         val fragmentName = fragment.definition.qualifiedName
         if (fragmentName in fragmentCallStack) {
             val cycle = (fragmentCallStack + fragmentName).joinToString(" -> ")
@@ -695,7 +746,8 @@ class TreeLoqiBuilder(
         fragmentCallStack.addLast(fragmentName)
         fragmentInliningStack.addLast(FragmentInliningContext(fragmentName, variableMapping))
         try {
-            return visitThoughtBranch(fragment.body).start
+            val branch = buildThoughtBranch(fragment.body, leaveTailOpen = true)
+            return BuiltStatement(branch.branch.start, branch.tail)
         } finally {
             fragmentInliningStack.removeLast()
             fragmentCallStack.removeLast()
@@ -786,6 +838,9 @@ class TreeLoqiBuilder(
     }
 
     private fun checkResultReachability(node: DecisionTreeNode, strict: Boolean): Boolean {
+        if (isInliningFragment()) {
+            return true
+        }
         val visiting = HashSet<DecisionTreeNode>()
         val ok = checkReachabilityInternal(node, visiting, strict)
         if (!ok) {
@@ -797,6 +852,9 @@ class TreeLoqiBuilder(
     }
 
     private fun checkResultReachability(branch: ThoughtBranch, strict: Boolean = false): Boolean {
+        if (isInliningFragment()) {
+            return true
+        }
         val visiting = HashSet<DecisionTreeNode>()
         val ok = checkReachabilityInternal(branch.start, visiting, strict)
         if (!ok) {
@@ -808,6 +866,9 @@ class TreeLoqiBuilder(
     }
 
     private fun <V> checkResultReachability(outcome: Outcome<V>, strict: Boolean = false): Boolean {
+        if (isInliningFragment()) {
+            return true
+        }
         val visiting = HashSet<DecisionTreeNode>()
         val ok = checkReachabilityInternal(outcome.node, visiting, strict)
         if (!ok) {
