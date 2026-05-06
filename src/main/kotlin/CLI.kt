@@ -419,11 +419,12 @@ fun main(args: Array<String>) {
     val commandLine = CommandLine(CLI())
     commandLine.executionExceptionHandler = CommandLine.IExecutionExceptionHandler { ex, _, parseResult ->
         val commandName = parseResult.commandSpec().qualifiedName()
-        System.err.println("$commandName failed: ${ex.message ?: ex.javaClass.simpleName}")
+        System.err.println("$commandName failed:")
+        ex.printStackTrace(System.err)
         1
     }
     commandLine.parameterExceptionHandler = CommandLine.IParameterExceptionHandler { ex, _ ->
-        System.err.println(ex.message)
+        ex.printStackTrace(System.err)
         ex.commandLine.usage(System.err)
         2
     }
