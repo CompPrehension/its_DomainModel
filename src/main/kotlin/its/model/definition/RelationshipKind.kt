@@ -93,17 +93,20 @@ data class LinkQuantifier(
 
 sealed class LinkCount : Describable {
     abstract fun accepts(actualCount: Int): Boolean
+    abstract fun acceptsAsUpperBound(actualCount: Int): Boolean
 
     open val isExactOne: Boolean
         get() = false
 
     object AnyCount : LinkCount() {
         override fun accepts(actualCount: Int) = true
+        override fun acceptsAsUpperBound(actualCount: Int) = true
         override val description = "*"
     }
 
     object Optional : LinkCount() {
         override fun accepts(actualCount: Int) = actualCount in 0..1
+        override fun acceptsAsUpperBound(actualCount: Int) = actualCount <= 1
         override val description = "?"
     }
 
@@ -113,6 +116,7 @@ sealed class LinkCount : Describable {
         }
 
         override fun accepts(actualCount: Int) = actualCount == count
+        override fun acceptsAsUpperBound(actualCount: Int) = actualCount <= count
         override val isExactOne = count == 1
         override val description = count.toString()
     }
