@@ -118,13 +118,11 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
             val subjectClass = relationship.getKnownSubjectClass(results) ?: continue
             val objectClass = relationship.getKnownObjectClasses(results).singleOrNull() ?: continue
             val quantifier = relationship.effectiveQuantifier
-            val hasExplicitQuantifier = relationship.kind is BaseRelationshipKind && relationship.kind.quantifier != null
 
             for (subj in subjectClass.instances) {
                 val actualCount = objects[subj to relationship] ?: 0
                 results.checkValid(
-                    if (hasExplicitQuantifier) quantifier.objCount.accepts(actualCount)
-                    else quantifier.objCount.acceptsAsUpperBound(actualCount),
+                    quantifier.objCount.accepts(actualCount),
                     "$subj has invalid outgoing links of $relationship: " +
                             "it is a subject of $actualCount links, but the relationship is quantified as $quantifier"
                 )
@@ -133,8 +131,7 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
             for (obj in objectClass.instances) {
                 val actualCount = subjects[obj to relationship] ?: 0
                 results.checkValid(
-                    if (hasExplicitQuantifier) quantifier.subjCount.accepts(actualCount)
-                    else quantifier.subjCount.acceptsAsUpperBound(actualCount),
+                    quantifier.subjCount.accepts(actualCount),
                     "$obj has invalid incoming links of $relationship: " +
                             "it is an object of $actualCount links, but the relationship is quantified as $quantifier"
                 )
