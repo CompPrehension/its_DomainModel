@@ -119,7 +119,7 @@ class ClassDef(
      * Отношение позволяет проекцию, если является бинарным и единично квантифицирована на стороне субъекта ("Один к ...")
      */
     val projectionRelationships: List<RelationshipDef>
-        get() = allRelationships.filter { it.isBinary && it.effectiveQuantifier.subjCount.isExactOne }
+        get() = allRelationships.filter { it.isBinary && it.effectiveQuantifier.subjCount == 1 }
 
     /**
      * Отношение, с помощью которого данный класс может быть спроецирован на [other], с учетом наследования

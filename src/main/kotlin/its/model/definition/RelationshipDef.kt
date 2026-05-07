@@ -127,7 +127,7 @@ class RelationshipDef(
                         )
 
                         BaseRelationshipKind.ScaleType.Partial -> results.checkValid(
-                            kind.quantifier == null || kind.quantifier.objCount.isExactOne,
+                            kind.quantifier == null || kind.quantifier.objCount == 1,
                             "$description has to be quantified as many-to-one ( {...->1} ) as it is declared as $scaleType"
                         )
                     }

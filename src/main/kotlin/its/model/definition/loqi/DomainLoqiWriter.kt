@@ -1,6 +1,7 @@
 package its.model.definition.loqi
 
 import its.model.definition.*
+import its.model.definition.LinkQuantifier.Companion.ANY_COUNT
 import its.model.definition.loqi.LoqiStringUtils.insertEscapes
 import its.model.definition.loqi.LoqiStringUtils.toLoqiName
 import its.model.definition.types.*
@@ -432,8 +433,8 @@ class DomainLoqiWriter private constructor(
         return "{${subjCount.toLoqiLinkCount()} -> ${objCount.toLoqiLinkCount()}}"
     }
 
-    private fun LinkCount.toLoqiLinkCount(): String {
-        return description
+    private fun Int.toLoqiLinkCount(): String {
+        return if (this == ANY_COUNT) "*" else this.toString()
     }
 
     private fun BaseRelationshipKind.ScaleType.toLoqi(): String {

@@ -45,7 +45,6 @@ relationshipQuantifier : '{' linkCount '->' linkCount '}'
                        ;
 linkCount : INTEGER
           | '*'
-          | '?'
           ;
 
 scaleType : LINEAR
