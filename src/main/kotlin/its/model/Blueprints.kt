@@ -1,9 +1,6 @@
 package its.model
 
-import its.model.definition.ObjectDef
-import its.model.definition.ParamsValues
-import its.model.definition.PropertyValueStatement
-import its.model.definition.RelationshipLinkStatement
+import its.model.definition.*
 import its.model.expressions.Operator
 
 @FunctionalInterface
@@ -12,14 +9,14 @@ interface BlueprintContextProvider {
 }
 
 interface Blueprint<T> {
-    fun build(ctx: BlueprintContextProvider): T
+    fun build(domain: DomainModel, ctx: BlueprintContextProvider): T
 }
 
 data class RelationshipLinkBlueprint(
     val name: String, val value: List<Operator>, val params: ParamsValues, val applyIf: Operator
 ) : Blueprint<RelationshipLinkStatement?> {
 
-    override fun build(ctx: BlueprintContextProvider): RelationshipLinkStatement? {
+    override fun build(owner: DomainModel, ctx: BlueprintContextProvider): RelationshipLinkStatement? {
         if (!(ctx.provide(this, "applyIf") as Boolean)) {
             return null
         }
@@ -35,7 +32,7 @@ data class RelationshipLinkBlueprint(
 data class ObjectPropertyValueBlueprint(
     val name: String, val value: Operator, val params: ParamsValues
 ) : Blueprint<PropertyValueStatement<*>> {
-    override fun build(ctx: BlueprintContextProvider): PropertyValueStatement<ObjectDef> {
+    override fun build(owner: DomainModel, ctx: BlueprintContextProvider): PropertyValueStatement<ObjectDef> {
         return PropertyValueStatement(ctx.provide(this, "owner") as ObjectDef,
             name, params, ctx.provide(this, "value"))
     }
@@ -44,14 +41,17 @@ data class ObjectPropertyValueBlueprint(
 class ObjectDefBlueprint(val className: String,
                          val properties: MutableList<ObjectPropertyValueBlueprint> = mutableListOf(),
                          val relationships: MutableList<RelationshipLinkBlueprint> = mutableListOf()): Blueprint<ObjectDef> {
-    override fun build(ctx: BlueprintContextProvider): ObjectDef {
+    override fun build(domain: DomainModel, ctx: BlueprintContextProvider): ObjectDef {
         val obj = ObjectDef(ctx.provide(this, "objectName") as String, className)
-        val newCtx = {bp: Blueprint<*>, name: String ->
-            if (name == "owner") obj
-            else ctx.provide(bp, name)
-        } as BlueprintContextProvider
-        obj.definedPropertyValues.addAll(properties.map { p -> p.build(newCtx) })
-        obj.relationshipLinks.addAll(relationships.mapNotNull { r -> r.build(newCtx) })
+        val newCtx = object : BlueprintContextProvider {
+            override fun provide(bp: Blueprint<*>, name: String): Any {
+                return if (name == "owner") obj
+                else ctx.provide(bp, name)
+            }
+        }
+        obj.domainModel = domain;
+        obj.definedPropertyValues.addAll(properties.map { p -> p.build(domain, newCtx) })
+        obj.relationshipLinks.addAll(relationships.mapNotNull { r -> r.build(domain, newCtx) })
         return obj
     }
 }
