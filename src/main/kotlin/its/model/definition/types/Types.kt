@@ -312,7 +312,7 @@ sealed class ClassInheritorType<Value : DomainRef<Inheritor>, Inheritor : ClassI
     valueClass: KClass<Value>,
 ) : DomainRefType<Value, ClassRef, ClassDef>(valueClass) {
 
-    protected val isUntyped
+    val isUntyped
         get() = className == UNTYPED
 
     override fun exists(domainModel: DomainModel): Boolean = !isUntyped && super.exists(domainModel)
