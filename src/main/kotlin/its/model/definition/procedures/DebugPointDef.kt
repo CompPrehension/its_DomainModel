@@ -1,10 +1,10 @@
 package its.model.definition.procedures
 
-import its.model.definition.types.StringType
+import its.model.definition.types.AnyType
 
 class DebugPointDef() : CallableProcedureDef(
     "print",
-    listOf(ProcedureArgument("comment", StringType)),
+    listOf(ProcedureArgument("comment", AnyType)),
     namespace = ProcedureNamespaces.DEBUG,
     scopeCapture = false,
 )

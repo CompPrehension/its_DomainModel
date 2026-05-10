@@ -11,7 +11,6 @@ object BuiltinProcedureRegistry : ProcedureRegistry {
         EvalDef(),
         DebugDumpPointDef(),
         DebugPointDef(),
-        DebugObjectPrintDef(),
         SubinterpreterCall(),
         MutableSubinterpreterCall(),
     )
