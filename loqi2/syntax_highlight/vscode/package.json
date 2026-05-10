@@ -1,8 +1,8 @@
 {
   "name": "loqi-syntax",
   "displayName": "Loqi Language Support",
-  "description": "Syntax highlighting, bracket matching, and folding for the Loqi DSL.",
-  "version": "2.0.0",
+  "description": "Syntax highlighting, bracket matching, indentation, and folding for Loqi and TPG files.",
+  "version": "2.1.0",
   "publisher": "local",
   "engines": {
     "vscode": "^1.85.0"
@@ -14,8 +14,14 @@
     "languages": [
       {
         "id": "loqi",
-        "aliases": ["Loqi", "loqi"],
-        "extensions": [".loqi"],
+        "aliases": [
+          "Loqi",
+          "loqi"
+        ],
+        "extensions": [
+          ".loqi",
+          ".tpg"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],

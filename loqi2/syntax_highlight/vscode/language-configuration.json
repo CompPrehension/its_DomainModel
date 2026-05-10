@@ -1,32 +1,109 @@
 {
   "comments": {
     "lineComment": "//",
-    "blockComment": ["/*", "*/"]
+    "blockComment": [
+      "/*",
+      "*/"
+    ]
   },
   "brackets": [
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"]
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
   ],
   "autoClosingPairs": [
-    { "open": "{", "close": "}", "notIn": ["string", "comment"] },
-    { "open": "[", "close": "]", "notIn": ["string", "comment"] },
-    { "open": "(", "close": ")", "notIn": ["string", "comment"] },
-    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
-    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
-    { "open": "`", "close": "`", "notIn": ["comment"] }
+    {
+      "open": "{",
+      "close": "}",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "[",
+      "close": "]",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "(",
+      "close": ")",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "`",
+      "close": "`",
+      "notIn": [
+        "comment"
+      ]
+    }
   ],
   "surroundingPairs": [
-    ["{", "}"],
-    ["[", "]"],
-    ["(", ")"],
-    ["\"", "\""],
-    ["'", "'"],
-    ["`", "`"]
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ],
+    [
+      "`",
+      "`"
+    ]
   ],
+  "folding": {
+    "markers": {
+      "start": "^\\s*//\\s*#?region\\b",
+      "end": "^\\s*//\\s*#?endregion\\b"
+    }
+  },
   "indentationRules": {
     "increaseIndentPattern": "^((?!//).)*(\\{\\s*(?://.*)?$|\\[\\s*(?://.*)?$|\\(\\s*(?://.*)?$)",
     "decreaseIndentPattern": "^\\s*(\\}|\\]|\\))\\s*[,;]?\\s*(?://.*)?$"
   },
-  "wordPattern": "`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*|\\$[A-Za-z_][A-Za-z0-9_]*|-?(?:(?:\\d+\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?|\\d+[dD])"
+  "wordPattern": "`[^`\\s]+`|\\$?[A-Za-z_][A-Za-z0-9_]*|-?(?:(?:\\d+\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?|\\d+[dD])"
 }

@@ -9,9 +9,9 @@
     <key>settings</key>
     <dict>
         <key>foldingStartMarker</key>
-        <string>(\{\s*$|\[\s*$)</string>
+        <string>(\{\s*$|\[\s*$|\(\s*$|^\s*//\s*#?region\b)</string>
         <key>foldingStopMarker</key>
-        <string>(^\s*\}|^\s*\])</string>
+        <string>(^\s*\}|^\s*\]|^\s*\)|^\s*//\s*#?endregion\b)</string>
     </dict>
 </dict>
 </plist>

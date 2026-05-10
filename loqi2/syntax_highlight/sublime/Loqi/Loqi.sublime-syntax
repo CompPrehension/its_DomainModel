@@ -1,128 +1,250 @@
 %YAML 1.2
 ---
 name: Loqi
+scope: source.loqi
+version: 2
 file_extensions:
   - loqi
-scope: source.loqi
+  - tpg
 
 contexts:
-
   main:
+    - include: loqi
+
+  loqi:
     - include: comments
     - include: strings
-
-    - match: '\b(tpg|cycle|agg|ask|conclude|true|false|null|body|out|with|var)\b'
-      scope: keyword.control.loqi
-
-    - match: '\b(PathInfo|TraceAct|State|Effect|Constraint|Node)\b'
-      scope: storage.type.loqi
-
-    - match: '\$[A-Za-z_][A-Za-z0-9_]*'
-      scope: variable.other.loqi
-
-    - match: '[A-Za-z_][A-Za-z0-9_]*'
-      scope: variable.other.identifier.loqi
-
-    - include: block
-    - include: metadata
-    - include: parentheses
-
-    - match: '->'
-      scope: keyword.operator.arrow.loqi
-
-    - match: '==|!=|<=|>=|<|>'
-      scope: keyword.operator.comparison.loqi
-
-    - match: '='
-      scope: keyword.operator.assignment.loqi
-
-
-  block:
-    - match: '\{'
-      scope: punctuation.section.block.begin.loqi
-      push: block-body
-
-  block-body:
-    - meta_scope: meta.block.loqi
-
-    - include: comments
-    - include: strings
-    - include: metadata
-    - include: parentheses
-
-    - match: '\{'
-      scope: punctuation.section.block.begin.loqi
-      push: block-body
-
-    - match: '\}'
-      scope: punctuation.section.block.end.loqi
-      pop: true
-
-    - include: main
-
-
-  metadata:
-    - match: '\['
-      scope: punctuation.section.metadata.begin.loqi
-      push: metadata-body
-
-  metadata-body:
-    - meta_scope: meta.metadata.loqi
-
-    - include: comments
-    - include: strings
-    - include: parentheses
-
-    - match: '\['
-      scope: punctuation.section.metadata.begin.loqi
-      push: metadata-body
-
-    - match: '\]'
-      scope: punctuation.section.metadata.end.loqi
-      pop: true
-
-    - include: main
-
-
-  parentheses:
-    - match: '\('
-      scope: punctuation.section.parens.begin.loqi
-      push: paren-body
-
-  paren-body:
-    - meta_scope: meta.parens.loqi
-
-    - include: comments
-    - include: strings
-    - include: metadata
-
-    - match: '\('
-      scope: punctuation.section.parens.begin.loqi
-      push: paren-body
-
-    - match: '\)'
-      scope: punctuation.section.parens.end.loqi
-      pop: true
-
-    - include: main
-
-
-  strings:
-    - match: '"'
-      scope: punctuation.definition.string.begin.loqi
-      push: string-body
-
-  string-body:
-    - meta_scope: string.quoted.double.loqi
-
-    - match: '\\.'
-      scope: constant.character.escape.loqi
-
-    - match: '"'
-      scope: punctuation.definition.string.end.loqi
-      pop: true
-
+    - include: declarations
+    - include: expression-references
+    - include: qualified-entities
+    - include: metadata-keys
+    - include: curly-block
+    - include: square-block
+    - include: parens
+    - include: keywords
+    - include: types
+    - include: constants
+    - include: numbers
+    - include: operators
+    - include: variables
+    - include: identifiers
 
   comments:
+    - match: '/\*'
+      scope: punctuation.definition.comment.begin.loqi
+      push:
+        - meta_scope: comment.block.loqi
+        - match: '\*/'
+          scope: punctuation.definition.comment.end.loqi
+          pop: true
     - match: '//.*$'
       scope: comment.line.double-slash.loqi
+
+  strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.loqi
+      push:
+        - meta_scope: string.quoted.triple.double.loqi
+        - include: string-escapes
+        - match: '"""'
+          scope: punctuation.definition.string.end.loqi
+          pop: true
+    - match: "'''"
+      scope: punctuation.definition.string.begin.loqi
+      push:
+        - meta_scope: string.quoted.triple.single.loqi
+        - include: string-escapes
+        - match: "'''"
+          scope: punctuation.definition.string.end.loqi
+          pop: true
+    - match: '"'
+      scope: punctuation.definition.string.begin.loqi
+      push:
+        - meta_scope: string.quoted.double.loqi
+        - include: string-escapes
+        - match: '"|$'
+          scope: punctuation.definition.string.end.loqi
+          pop: true
+    - match: "'"
+      scope: punctuation.definition.string.begin.loqi
+      push:
+        - meta_scope: string.quoted.single.loqi
+        - include: string-escapes
+        - match: "'|$"
+          scope: punctuation.definition.string.end.loqi
+          pop: true
+    - match: '`'
+      scope: punctuation.definition.string.begin.loqi
+      push:
+        - meta_scope: string.quoted.other.backtick.loqi
+        - match: '`|$'
+          scope: punctuation.definition.string.end.loqi
+          pop: true
+
+  string-escapes:
+    - match: '\\[btnfr"''\\]'
+      scope: constant.character.escape.loqi
+
+  declarations:
+    - match: '\b(tpg)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.graph.loqi
+        2: entity.name.type.graph.loqi
+    - match: '\b(class)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)(?:\s*(:)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*))?'
+      captures:
+        1: keyword.declaration.class.loqi
+        2: entity.name.type.class.loqi
+        3: punctuation.separator.inheritance.loqi
+        4: entity.other.inherited-class.loqi
+    - match: '\b(enum)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.enum.loqi
+        2: entity.name.type.enum.loqi
+    - match: '\b(obj)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)(\s*(:)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*))?'
+      captures:
+        1: keyword.declaration.object.loqi
+        2: entity.name.instance.loqi
+        4: punctuation.separator.type.loqi
+        5: entity.name.type.class.loqi
+    - match: '\b(prop)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.property.loqi
+        2: entity.name.variable.property.loqi
+    - match: '\b(rel)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.relationship.loqi
+        2: entity.name.function.relationship.loqi
+    - match: '\b(fragment)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.fragment.loqi
+        2: entity.name.function.fragment.loqi
+    - match: '\b(var)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)(?=\s*(?::|=|,|with|$))'
+      captures:
+        1: keyword.declaration.variable.loqi
+        2: variable.other.definition.loqi
+
+  expression-references:
+    - match: '(\$)(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: punctuation.definition.variable.loqi
+        2: variable.other.special.loqi
+    - match: '(\.)(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: punctuation.accessor.dot.loqi
+        2: variable.other.member.property.loqi
+    - match: '(->|=>|\+=>|-=>)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.operator.relationship.loqi
+        2: entity.name.function.relationship.loqi
+    - match: '\b(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)(\s*(?::)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*))*\s*(?=\()'
+      captures:
+        1: entity.name.function.loqi
+        3: entity.name.function.loqi
+
+  qualified-entities:
+    - match: '\b(class)\s*(:)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.class.loqi
+        2: punctuation.separator.key-value.loqi
+        3: entity.name.type.class.loqi
+    - match: '\b(obj)\s*(:)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.object.loqi
+        2: punctuation.separator.key-value.loqi
+        3: entity.name.instance.loqi
+    - match: '\b(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)\s*(:)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)\b'
+      captures:
+        1: entity.name.type.enum.loqi
+        2: punctuation.separator.key-value.loqi
+        3: constant.other.enum-value.loqi
+
+  metadata-keys:
+    - match: '\b(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)(\s*(\.)\s*(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*))?\s*(?==)'
+      captures:
+        1: entity.other.attribute-name.namespace.loqi
+        3: punctuation.accessor.dot.loqi
+        4: entity.other.attribute-name.loqi
+
+  keywords:
+    - match: '\b(?:if|else|find|findExtreme|forAny|forAll|among|with|as)\b'
+      scope: keyword.control.expression.loqi
+    - match: '\b(?:while|cycle|agg|ask|switch|trivial|tuple|conclude|out)\b'
+      scope: keyword.control.tree.loqi
+    - match: '\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var|fragment)\b'
+      scope: keyword.declaration.loqi
+    - match: '\b(?:and|or|not|is|to|compare)\b'
+      scope: keyword.operator.word.loqi
+    - match: '\b(?:linear|partial|opposite|transitive|between|closer|further)\b'
+      scope: storage.modifier.relationship.loqi
+    - match: '\b(?:hyp|mutex)\b'
+      scope: storage.modifier.aggregation.loqi
+
+  types:
+    - match: '\b(?:int|double|bool|string)\b'
+      scope: storage.type.primitive.loqi
+
+  constants:
+    - match: '\b(?:true|false)\b'
+      scope: constant.language.boolean.loqi
+    - match: '\bnull\b'
+      scope: constant.language.null.loqi
+    - match: '\b(?:correct|error)\b'
+      scope: constant.language.outcome.loqi
+
+  numbers:
+    - match: '(?<![A-Za-z0-9_`])(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+|(?:0|[1-9]\d*)[dD])(?![A-Za-z0-9_`])'
+      scope: constant.numeric.float.loqi
+    - match: '(?<![A-Za-z0-9_`])(?:0|[1-9]\d*)(?![A-Za-z0-9_`])'
+      scope: constant.numeric.integer.loqi
+
+  operators:
+    - match: '\+=>|-=>|=>|->|-\[|\]->'
+      scope: keyword.operator.relationship.loqi
+    - match: '==|!=|>=|<=|>|<'
+      scope: keyword.operator.comparison.loqi
+    - match: '='
+      scope: keyword.operator.assignment.loqi
+    - match: '\+'
+      scope: keyword.operator.arithmetic.loqi
+    - match: '\?'
+      scope: keyword.operator.ternary.loqi
+    - match: ':|\.|,|;'
+      scope: punctuation.separator.loqi
+
+  variables:
+    - match: '\$(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      scope: variable.other.special.loqi
+
+  identifiers:
+    - match: '\b[A-Za-z_][A-Za-z0-9_]*\b'
+      scope: variable.other.identifier.loqi
+
+  curly-block:
+    - match: '\{'
+      scope: punctuation.section.block.begin.curly.loqi
+      push:
+        - meta_scope: meta.block.curly.loqi
+        - match: '\}'
+          scope: punctuation.section.block.end.curly.loqi
+          pop: true
+        - include: loqi
+
+  square-block:
+    - match: '\['
+      scope: punctuation.section.group.begin.square.loqi
+      push:
+        - meta_scope: meta.group.brackets.loqi
+        - match: '\]'
+          scope: punctuation.section.group.end.square.loqi
+          pop: true
+        - include: loqi
+
+  parens:
+    - match: '\('
+      scope: punctuation.section.group.begin.parens.loqi
+      push:
+        - meta_scope: meta.group.parens.loqi
+        - match: '\)'
+          scope: punctuation.section.group.end.parens.loqi
+          pop: true
+        - include: loqi
