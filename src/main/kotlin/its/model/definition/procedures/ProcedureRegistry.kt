@@ -8,8 +8,10 @@ interface ProcedureRegistry {
 object BuiltinProcedureRegistry : ProcedureRegistry {
     private val procedures: List<CallableProcedureDef> = listOf(
         AssertPointDef(),
+        EvalDef(),
         DebugDumpPointDef(),
         DebugPointDef(),
+        DebugObjectPrintDef(),
         SubinterpreterCall(),
         MutableSubinterpreterCall(),
     )
