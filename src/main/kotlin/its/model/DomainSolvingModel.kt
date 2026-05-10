@@ -91,25 +91,28 @@ class DomainSolvingModel(
          */
         @JvmStatic
         fun collectTrees(directoryURL: URL): Map<String, DecisionTree> {
-            val xmlMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.xml"))
+            val xmlMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(tree|tpg)_(\\S+)\\.xml"))
                 .map { (fileUrl, regexMatch) ->
-                    var (name) = regexMatch.destructured
-                    if (name.startsWith("_")) {
-                        name = name.substring(1)
-                    }
+                    val (_, name) = regexMatch.destructured
                     name to DecisionTreeXMLBuilder.fromXMLFile(fileUrl.toURI().toString())
                 }
                 .toMap()
-            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("tree(_\\S+|)\\.(loqi|tpg)"))
+            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(tree|tpg)_(\\S+)\\.loqi"))
                 .map { (fileUrl, regexMatch) ->
-                    var (name) = regexMatch.destructured
-                    if (name.startsWith("_")) {
-                        name = name.substring(1)
-                    }
+                    val (_, name) = regexMatch.destructured
                     name to TreeLoqiBuilder.buildTree(fileUrl)
                 }
                 .toMap()
-            return xmlMap + loqiMap
+            val tpgMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(\\S+)\\.tpg"))
+                .map { (fileUrl, regexMatch) ->
+                    val (fileName) = regexMatch.destructured
+                    val name = fileName
+                        .removePrefix("tree_")
+                        .removePrefix("tpg_")
+                    name to TreeLoqiBuilder.buildTree(fileUrl)
+                }
+                .toMap()
+            return xmlMap + loqiMap + tpgMap
         }
 
         /**
