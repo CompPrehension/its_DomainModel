@@ -20,7 +20,13 @@ class AddNewObject(
         results: ExpressionValidationResults,
         context: ExpressionContext
     ): Type<*> {
-        return ObjectType(objectDef.className)
+        val type = ObjectType(objectDef.className)
+        results.checkConforming(
+            type.exists(domainModel),
+            "No class of name '${objectDef.className}' found in domain, " +
+                    "but it is used in $description"
+        )
+        return type
     }
 
     override fun <I> use(behaviour: OperatorBehaviour<I>): I {
