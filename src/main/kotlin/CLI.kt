@@ -11,6 +11,9 @@ import its.model.nodes.DecisionTree
 import its.model.nodes.xml.DecisionTreeXMLWriter
 import picocli.CommandLine
 import picocli.CommandLine.*
+import java.io.FileDescriptor
+import java.io.FileOutputStream
+import java.io.PrintStream
 import java.nio.file.Path
 import java.util.concurrent.Callable
 import kotlin.io.path.bufferedWriter
@@ -415,8 +418,16 @@ private fun resolveConcreteDomain(model: DomainSolvingModel, tag: String?, domai
     return domain
 }
 
+private fun configureHumanConsoleEncoding() {
+    val console = System.console() ?: return
+    val charset = console.charset()
+    System.setOut(PrintStream(FileOutputStream(FileDescriptor.out), true, charset))
+    System.setErr(PrintStream(FileOutputStream(FileDescriptor.err), true, charset))
+}
+
 fun main(args: Array<String>) {
     val commandLine = CommandLine(CLI())
+    configureHumanConsoleEncoding()
     commandLine.executionExceptionHandler = CommandLine.IExecutionExceptionHandler { ex, _, parseResult ->
         val commandName = parseResult.commandSpec().qualifiedName()
         System.err.println("$commandName failed:")
