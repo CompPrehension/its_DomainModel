@@ -24,7 +24,7 @@ class TreeLoqiBuilder(
     private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
-    private val outMap: MutableMap<DecisionTreeElement, Any> = mutableMapOf()
+    private val outMap: MutableMap<DecisionTreeElement, List<Any>> = mutableMapOf()
     private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
     private val fragments: MutableMap<String, RegisteredFragment> = mutableMapOf()
     private val fragmentInliningStack = ArrayDeque<FragmentInliningContext>()
@@ -32,11 +32,12 @@ class TreeLoqiBuilder(
 
     // TODO: needs more refactoring, more debugging
 
-    data class BranchInfo<T>(val out: T?, val bodyBranches: List<ThoughtBranch>, val outcomes: Outcomes<T>)
+    data class BranchInfo<T>(val out: List<T>, val bodyBranches: List<ThoughtBranch>, val outcomes: Outcomes<T>)
 
     private data class BuiltStatement(
-        val start: DecisionTreeNode,
+        var start: DecisionTreeNode,
         val tail: DecisionTreeNode,
+        var openFragmentExits: List<OpenFragmentExit> = emptyList(),
     )
 
     private data class BuiltThoughtBranch(
@@ -53,6 +54,18 @@ class TreeLoqiBuilder(
         val fragmentName: String,
         val variableMapping: Map<String, String>,
     )
+
+    private data class FragmentCallRedirects(
+        val replacements: Map<BranchResult, DecisionTreeNode>,
+        val outResults: Set<BranchResult>,
+    )
+
+    private data class OpenFragmentExit(
+        val result: BranchResult,
+        val replace: (DecisionTreeNode) -> Unit,
+    )
+
+    private val fragmentResultReplacementStack = ArrayDeque<Map<BranchResult, DecisionTreeNode>>()
 
     companion object {
         @JvmStatic
@@ -110,6 +123,10 @@ class TreeLoqiBuilder(
             return inlineFragment(fragment, ctx)
         }
 
+        if (ctx.callRedirBranches() != null) {
+            throw LoqiDomainBuildException(ctx.start.line, "Call result redirection is supported only for fragments")
+        }
+
         val procedure = resolveProcedure(ctx.namespaceResolution())
             ?: throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
         val args = buildCallArgs(ctx.callArgs())
@@ -129,13 +146,13 @@ class TreeLoqiBuilder(
         }
         val stmts = ctx.stmts().stmt();
         val first = buildStmt(stmts[0])
-        var prev = first.tail
+        var prev = first
         for (i in 1 until stmts.size) {
             val newStmt = buildStmt(stmts[i]);
             domainOpAt(stmts[i].start.line) {
                 connectToNextStatement(prev, newStmt.start)
             }
-            prev = newStmt.tail;
+            prev = newStmt;
         }
 
         if (!leaveTailOpen) {
@@ -149,7 +166,7 @@ class TreeLoqiBuilder(
                     checkResultReachability(it)
                 }
             },
-            prev
+            prev.tail
         )
     }
 
@@ -195,37 +212,69 @@ class TreeLoqiBuilder(
         return !fragmentInliningStack.isEmpty()
     }
 
-    private fun connectToNextStatement(prev: DecisionTreeNode, next: DecisionTreeNode) {
-        if (prev is ProcedureCallNode && prev.next is DummyNode) {
-            prev.next = next
-        } else if (prev in outMap && prev is LinkNode<*>) {
-            val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
-            if (outcome.count() != 1) {
+    private fun currentFragmentResultReplacement(result: BranchResult): DecisionTreeNode? {
+        val iterator = fragmentResultReplacementStack.descendingIterator()
+        while (iterator.hasNext()) {
+            val replacement = iterator.next()[result]
+            if (replacement != null) {
+                return replacement
+            }
+        }
+        return null
+    }
+
+    private fun connectToNextStatement(prev: BuiltStatement, next: DecisionTreeNode) {
+        if (prev.openFragmentExits.isNotEmpty()) {
+            prev.openFragmentExits.forEach { exit ->
+                exit.replace(next)
+            }
+            checkResultReachability(next, false)
+            return
+        }
+
+        val prevTail = prev.tail
+        if (prevTail is ProcedureCallNode && prevTail.next is DummyNode) {
+            prevTail.next = next
+        } else if (prevTail in outMap && prevTail is LinkNode<*>) {
+            val outKeys = outMap[prevTail] ?: throw ThisShouldNotHappen()
+            val outcomes = (prevTail as LinkNode<Any>).outcomes.filter { value -> value.key in outKeys }
+            if (outcomes.count() != outKeys.count()) {
                 throw ThisShouldNotHappen()
             } else {
-                prev.outcomes.remove(outcome[0])
-                prev.outcomes.add(Outcome(outMap[prev] as Any, next)
-                    .also {checkResultReachability(it)}
-                    .also {
-                        val alias = findAlias(outcome[0])
-                        aliases[alias]?.remove(outcome[0])
-                        aliases[alias]?.add(it)
-                    }
-                )
+                outcomes.forEach { outcome ->
+                    prevTail.outcomes.remove(outcome)
+                    prevTail.outcomes.add(Outcome(outcome.key, next)
+                        .also {checkResultReachability(it)}
+                        .also {
+                            val alias = findAlias(outcome)
+                            aliases[alias]?.remove(outcome)
+                            aliases[alias]?.add(it)
+                        }
+                    )
+                }
             }
         } else {
             throw LoqiDomainBuildException("Statement can't be reached")
         }
     }
 
-    private fun closeOutRedirect(prev: DecisionTreeNode) {
-        if (prev in outMap && prev is LinkNode<*>) {
-            val outcome = (prev as LinkNode<Any>).outcomes.filter { value -> value.key == outMap[prev] }
-            if (outcome.count() != 1) {
+    private fun closeOutRedirect(prev: BuiltStatement) {
+        if (prev.openFragmentExits.isNotEmpty()) {
+            val results = prev.openFragmentExits.map { it.result }.distinct().joinToString(", ")
+            throw LoqiDomainBuildException("Fragment call redirects `$results` to out, but there is no following statement")
+        }
+
+        val prevTail = prev.tail
+        if (prevTail in outMap && prevTail is LinkNode<*>) {
+            val outKeys = outMap[prevTail] ?: throw ThisShouldNotHappen()
+            val outcomes = (prevTail as LinkNode<Any>).outcomes.filter { value -> value.key in outKeys }
+            if (outcomes.count() != outKeys.count()) {
                 throw ThisShouldNotHappen()
             } else {
-                prev.outcomes.remove(outcome[0])
-                if (prev !is BranchAggregationNode) checkResultReachability(outcome[0], true) // так как Branch Aggregation Node может завершать ветвь
+                outcomes.forEach { outcome ->
+                    prevTail.outcomes.remove(outcome)
+                    if (prevTail !is BranchAggregationNode) checkResultReachability(outcome, true) // так как Branch Aggregation Node может завершать ветвь
+                }
             }
         }
     }
@@ -237,7 +286,12 @@ class TreeLoqiBuilder(
             actionExp = visitExp(ctx.exp());
         }
         if (ctx.outcomeType() != null) {
-            result = BranchResultNode(parseBranchResult(ctx.outcomeType().text), actionExp);
+            val branchResult = parseBranchResult(ctx.outcomeType().text)
+            val replacement = currentFragmentResultReplacement(branchResult)
+            if (replacement != null) {
+                return replacement
+            }
+            result = BranchResultNode(branchResult, actionExp);
             result.fillMetadata(ctx.metadataSection())
         } else {
             val call = visitCallStmt(ctx.callStmt());
@@ -277,8 +331,23 @@ class TreeLoqiBuilder(
         return null;
     }
 
+    private fun parseBranchResults(ctx: LoqiGrammarParser.ExpListContext?): List<BranchResult>? {
+        if (ctx == null) {
+            return null
+        }
+        val results = ctx.exp().map { parseBranchResult(it, null) }
+        if (results.any { it == null }) {
+            return null
+        }
+        return results.filterNotNull()
+    }
+
     private fun parseBranchResult(ctx: LoqiGrammarParser.OutcomeTypeContext): BranchResult {
         return parseBranchResult(ctx.text)
+    }
+
+    private fun buildExpList(ctx: LoqiGrammarParser.ExpListContext): List<Any> {
+        return ctx.exp().map { visitExp(it).unwrap() }
     }
 
     private fun <T> checkNoDuplicateOutcomeBranches(outcomes: List<Outcome<T>>) {
@@ -295,10 +364,11 @@ class TreeLoqiBuilder(
             (
                 ctx.outcomeTypeList() != null ||
                     (
-                        ctx.exp() != null &&
+                        ctx.expList() != null &&
                             (
-                                visitAndObtainBool(ctx.exp(), null) != null ||
-                                    visitExp(ctx.exp()) !is DecisionTreeVarLiteral
+                                ctx.expList().exp().size != 1 ||
+                                    visitAndObtainBool(ctx.expList().exp()[0], null) != null ||
+                                    visitExp(ctx.expList().exp()[0]) !is DecisionTreeVarLiteral
                             )
                     )
             )
@@ -308,7 +378,7 @@ class TreeLoqiBuilder(
         return ctx.thoughtBranch() != null &&
             (
                 ctx.outcomeTypeList() != null ||
-                    (ctx.exp() != null && parseBranchResult(ctx.exp(), null) != null)
+                    (ctx.expList() != null && parseBranchResults(ctx.expList()) != null)
             )
     }
 
@@ -323,8 +393,8 @@ class TreeLoqiBuilder(
             branches.bodyBranches[0],
             Outcomes(branches.outcomes)
         ).also {
-            if (branches.out != null) {
-                outMap[it] = branches.out as Any;
+            if (branches.out.isNotEmpty()) {
+                outMap[it] = branches.out.map { out -> out as Any };
             }
         }
     }
@@ -334,7 +404,7 @@ class TreeLoqiBuilder(
             val keys = if (res.outcomeTypeList() != null) {
                 res.outcomeTypeList().outcomeType().map { parseBranchResult(it) }
             } else {
-                listOf(parseBranchResult(res.exp(), null) ?: throw ThisShouldNotHappen())
+                parseBranchResults(res.expList()) ?: throw ThisShouldNotHappen()
             }
             keys.map { key ->
                 Outcome(key, visitThoughtBranch(res.thoughtBranch()).start)
@@ -356,7 +426,7 @@ class TreeLoqiBuilder(
                         )
                 }
             } else {
-                listOf(visitExp(res.exp()).unwrap())
+                buildExpList(res.expList())
             }
             keys.map { key ->
                 Outcome(key, visitThoughtBranch(res.thoughtBranch()).start)
@@ -384,6 +454,26 @@ class TreeLoqiBuilder(
         return null
     }
 
+    private fun getBranchResultKeys(ctx: LoqiGrammarParser.BranchContext): List<BranchResult>? {
+        if (ctx.outcomeTypeList() != null) {
+            return ctx.outcomeTypeList().outcomeType().map { parseBranchResult(it) }
+        }
+        return parseBranchResults(ctx.expList())
+    }
+
+    private fun getExpressionKeys(ctx: LoqiGrammarParser.BranchContext): List<Any> {
+        if (ctx.outcomeTypeList() != null) {
+            return ctx.outcomeTypeList().outcomeType().map { outcomeType ->
+                visitAndObtainBool(null, outcomeType)
+                    ?: throw LoqiDomainBuildException(
+                        outcomeType.start.line,
+                        "Expression branch outcome `${outcomeType.text}` cannot be converted to boolean"
+                    )
+            }
+        }
+        return buildExpList(ctx.expList())
+    }
+
     fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext, allowOnlyResultOut: Boolean = false): BranchInfo<*> {
         if (ctx.branches() == null) {
             val exp = visitExp(ctx.exp()).unwrap();
@@ -392,7 +482,7 @@ class TreeLoqiBuilder(
             }
             val opposite = !exp;
 
-            return BranchInfo(exp, listOf(), Outcomes(mutableListOf(
+            return BranchInfo(listOf(exp), listOf(), Outcomes(mutableListOf(
                 Outcome(opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
                 Outcome(exp, DummyNode()).also {metaAliasForOut(ctx.out(), it)},
             )))
@@ -404,8 +494,9 @@ class TreeLoqiBuilder(
 
         val thoughtBranches = visitAbstractBranches(ctx.branches().branch().filter { b ->
             !isExpressionOutcomeBranch(b) &&
-                b.exp() != null &&
-                visitExp(b.exp()) is DecisionTreeVarLiteral &&
+                b.expList() != null &&
+                b.expList().exp().size == 1 &&
+                visitExp(b.expList().exp()[0]) is DecisionTreeVarLiteral &&
                 b.thoughtBranch() != null
         })
 
@@ -413,32 +504,27 @@ class TreeLoqiBuilder(
             branchContext.thoughtBranch() == null
         };
 
-        if (outBranch.count() > 1) {
-            throw LoqiDomainBuildException("You can redirect only one outcome branch");
-        } else if (
-            allowOnlyResultOut && !outBranch.isEmpty() &&
-            parseBranchResult(outBranch[0].exp(), outBranch[0].outcomeType()) == null
+        if (
+            allowOnlyResultOut &&
+            outBranch.isNotEmpty() &&
+            outBranch.any { branch -> branch.outcomeTypeList() == null && parseBranchResults(branch.expList()) == null }
         ) {
             // если требуется обязательно делать out как boolean/result
             throw LoqiDomainBuildException("You can redirect only one resulting (boolean or branch result) outcome branch");
         }
 
-        val outcomeOut = if (outBranch.isEmpty()) null else {
-            if (outBranch[0].exp() == null) {
-                visitAndObtainBool(outBranch[0].exp(), outBranch[0].outcomeType())
-            } else {
-                visitExp(outBranch[0].exp()).unwrap()
-            }
+        val outcomeOut = outBranch.flatMap { branch -> getExpressionKeys(branch) }
+
+        val duplicateOut = outcomeOut.firstOrNull { out -> outcomes.any { value -> value.key == out } }
+        if (duplicateOut != null) {
+            throw LoqiDomainBuildException("Duplicate outcome branch for `$duplicateOut`")
         }
 
-        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.isNotEmpty()) {
-            throw LoqiDomainBuildException("Duplicate outcome branch for `$outcomeOut`")
-        }
-
-        if (outcomeOut != null) {
-            outcomes.add(Outcome(outcomeOut, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
+        outcomeOut.forEach { out ->
+            outcomes.add(Outcome(out, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
         }
         
+        checkNoDuplicateOutcomeBranches(outcomes)
         outcomes.forEach {checkResultReachability(it)}
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
     }
@@ -449,7 +535,7 @@ class TreeLoqiBuilder(
         if (ctx.branches() == null) {
             val outcomeType = parseBranchResult(ctx.outcomeType().text)
 
-            return BranchInfo(outcomeType, listOf(visitThoughtBranch(ctx.thoughtBranch())),
+            return BranchInfo(listOf(outcomeType), listOf(visitThoughtBranch(ctx.thoughtBranch())),
                 Outcomes(listOf(Outcome(outcomeType, DummyNode()).also{metaAliasForOut(ctx.out(), it)}))
             )
         }
@@ -466,41 +552,43 @@ class TreeLoqiBuilder(
             branchContext.thoughtBranch() == null
         };
 
-        if (outBranch.count() > 1) {
-            throw LoqiDomainBuildException("You can redirect only one outcome branch");
-        } else if (
+        if (
             !outBranch.isEmpty() &&
-            parseBranchResult(outBranch[0].exp(), outBranch[0].outcomeType()) == null) {
+            outBranch.any { branch -> getBranchResultKeys(branch) == null }) {
             throw LoqiDomainBuildException("You can redirect only one outcome branch, not thought branch");
         }
 
         var outcomeOut = if (outBranch.isEmpty()) {
-            defaultOut
+            defaultOut?.let { listOf(it) } ?: emptyList()
         } else {
-            parseBranchResult(outBranch[0].outcomeType().text)
+            outBranch.flatMap { branch -> getBranchResultKeys(branch) ?: throw ThisShouldNotHappen() }
         }
 
-        if (outcomes.filter { value -> value.key == outcomeOut}.isNotEmpty() && outcomeOut == defaultOut) {
-            outcomeOut = null;
+        if (defaultOut != null && outcomeOut == listOf(defaultOut) && outcomes.any { value -> value.key == defaultOut }) {
+            outcomeOut = emptyList()
         }
 
-        if (outcomeOut != null && outcomes.filter { value -> value.key == outcomeOut}.isNotEmpty()) {
-            throw LoqiDomainBuildException("Duplicate outcome branch for `$outcomeOut`")
+        val duplicateOut = outcomeOut.firstOrNull { out -> outcomes.any { value -> value.key == out } }
+        if (duplicateOut != null) {
+            throw LoqiDomainBuildException("Duplicate outcome branch for `$duplicateOut`")
         }
 
-        if (outcomeOut != null) {
-            outcomes.add(Outcome(outcomeOut, DummyNode()).also{
+        outcomeOut.forEach { out ->
+            outcomes.add(Outcome(out, DummyNode()).also{
                 if (!outBranch.isEmpty()) metaAliasForBranch(outBranch[0], it)
             });
         }
 
+        checkNoDuplicateOutcomeBranches(outcomes)
         outcomes.forEach {checkResultReachability(it)}
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
     }
 
     fun visitAbstractBranches(list: List<LoqiGrammarParser.BranchContext>): List<ThoughtBranch> {
         return list.map { branch ->
-            val expr = branch.exp()?.let { visitExp(it) }
+            val expr = branch.expList()
+                ?.takeIf { it.exp().size == 1 }
+                ?.let { visitExp(it.exp()[0]) }
 
             if (expr is DecisionTreeVarLiteral) {
                 val result = visitThoughtBranch(branch.thoughtBranch()).also { metaAliasForBranch(branch, it)}
@@ -542,8 +630,8 @@ class TreeLoqiBuilder(
         }
 
         return BranchAggregationNode(agg, branches.bodyBranches, branches.outcomes).also {
-            if (branches.out != null) {
-                outMap[it] = branches.out as Any;
+            if (branches.out.isNotEmpty()) {
+                outMap[it] = branches.out.map { out -> out as Any };
             }
         }
     }
@@ -561,8 +649,8 @@ class TreeLoqiBuilder(
 
         return CycleAggregationNode(agg, expr, variable, listOf(),
             branches.bodyBranches[0], branches.outcomes).also {
-                if (branches.out != null) {
-                    outMap[it] = branches.out as Any;
+                if (branches.out.isNotEmpty()) {
+                    outMap[it] = branches.out.map { out -> out as Any };
                 }
         }
     }
@@ -616,7 +704,7 @@ class TreeLoqiBuilder(
         val trivExpr = if (ctx.exp(1) != null) visitExp(ctx.exp(1)) else null;
         var isSwitch = !ctx.getTokens(SWITCH).isEmpty();
         return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr).also {
-            if (branches.out != null) outMap[it] = branches.out;
+            if (branches.out.isNotEmpty()) outMap[it] = branches.out.map { out -> out as Any };
         }
     }
 
@@ -636,7 +724,7 @@ class TreeLoqiBuilder(
         } ?: emptyList()
 
         val branches = if (ctx.expBranches() == null) {
-            BranchInfo(true, listOf(), Outcomes(mutableListOf(
+            BranchInfo(listOf(true), listOf(), Outcomes(mutableListOf(
                 Outcome(true, DummyNode())
             )))
         } else {
@@ -656,10 +744,10 @@ class TreeLoqiBuilder(
 
         return FindActionNode(DecisionTreeVarAssignment(variable, expr),
             listOf(),decls, boolOutcomes).also {
-                if (branches.out != null) {
-                    outMap[it] = branches.out as Boolean
+                if (branches.out.isNotEmpty()) {
+                    outMap[it] = branches.out.map { out -> out as Any }
                 } else if (!boolOutcomes.containsKey(true)) {
-                    outMap[it] = true
+                    outMap[it] = listOf(true)
                 }
         }
     }
@@ -808,6 +896,7 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException(callCtx.start.line, "Recursive fragment expansion detected: $cycle")
         }
 
+        val redirects = buildFragmentCallRedirects(callCtx.callRedirBranches())
         val actualArguments = buildCallArgs(callCtx.callArgs())
         validateFragmentArguments(fragment, actualArguments, callCtx)
         val variableMapping = fragment.definition.arguments.zip(actualArguments).associate { (formal, actual) ->
@@ -816,13 +905,149 @@ class TreeLoqiBuilder(
 
         fragmentCallStack.addLast(fragmentName)
         fragmentInliningStack.addLast(FragmentInliningContext(fragmentName, variableMapping))
+        fragmentResultReplacementStack.addLast(redirects.replacements)
         try {
             val branch = buildThoughtBranch(fragment.body, leaveTailOpen = true)
-            return BuiltStatement(branch.branch.start, branch.tail)
+            val statement = BuiltStatement(branch.branch.start, branch.tail)
+            statement.openFragmentExits = collectOpenFragmentExits(statement, redirects.outResults, callCtx.start.line)
+            return statement
         } finally {
+            fragmentResultReplacementStack.removeLast()
             fragmentInliningStack.removeLast()
             fragmentCallStack.removeLast()
         }
+    }
+
+    private fun buildFragmentCallRedirects(ctx: CallRedirBranchesContext?): FragmentCallRedirects {
+        if (ctx == null) {
+            return FragmentCallRedirects(emptyMap(), emptySet())
+        }
+
+        if (ctx.outcomeTypeList() != null) {
+            return FragmentCallRedirects(
+                emptyMap(),
+                ctx.outcomeTypeList().outcomeType().map { parseBranchResult(it) }.toSet()
+            )
+        }
+
+        val replacements = mutableMapOf<BranchResult, DecisionTreeNode>()
+        val outResults = mutableSetOf<BranchResult>()
+        ctx.branches().branch().forEach { branch ->
+            if (branch.expList() != null) {
+                throw LoqiDomainBuildException(branch.start.line, "Fragment result redirection must use branch result outcomes")
+            }
+            val results = if (branch.outcomeTypeList() != null) {
+                branch.outcomeTypeList().outcomeType().map { parseBranchResult(it) }
+            } else {
+                throw ThisShouldNotHappen()
+            }
+
+            results.forEach { result ->
+                if (result in replacements || result in outResults) {
+                    throw LoqiDomainBuildException(branch.start.line, "Duplicate fragment result redirection for `$result`")
+                }
+                val replacement = branch.thoughtBranch()?.let { visitThoughtBranch(it).start }
+                if (replacement == null) {
+                    outResults.add(result)
+                } else {
+                    replacements[result] = replacement
+                }
+            }
+        }
+        return FragmentCallRedirects(replacements, outResults)
+    }
+
+    private fun collectOpenFragmentExits(
+        statement: BuiltStatement,
+        outResults: Set<BranchResult>,
+        line: Int,
+    ): List<OpenFragmentExit> {
+        if (outResults.isEmpty()) {
+            return emptyList()
+        }
+
+        val exits = mutableListOf<OpenFragmentExit>()
+        val seen = HashSet<DecisionTreeNode>()
+        lateinit var visitNode: (DecisionTreeNode, ((BranchResultNode) -> Unit)?) -> Unit
+
+        fun addRootExit(node: BranchResultNode) {
+            exits.add(OpenFragmentExit(node.value) { replacement ->
+                replaceAlias(node, replacement)
+                statement.start = replacement
+            })
+        }
+
+        fun replaceOutcome(parent: LinkNode<*>, outcome: Outcome<*>, replacement: DecisionTreeNode) {
+            val typedParent = parent as LinkNode<Any>
+            val typedOutcome = outcome as Outcome<Any>
+            val newOutcome = Outcome(typedOutcome.key, replacement)
+            typedParent.outcomes.remove(typedOutcome)
+            typedParent.outcomes.add(newOutcome)
+            replaceAlias(typedOutcome, newOutcome)
+            replaceAlias(typedOutcome.node, replacement)
+        }
+
+        fun addOutcomeExit(parent: LinkNode<*>, outcome: Outcome<*>, node: BranchResultNode) {
+            exits.add(OpenFragmentExit(node.value) { replacement ->
+                replaceOutcome(parent, outcome, replacement)
+            })
+        }
+
+        fun visitLinkNodeOutcomes(node: LinkNode<*>) {
+            node.outcomes.toList().forEach { outcome ->
+                val child = outcome.node
+                if (child is BranchResultNode && child.value in outResults) {
+                    addOutcomeExit(node, outcome, child)
+                } else {
+                    visitNode(child, null)
+                }
+            }
+        }
+
+        fun visitNestedThoughtBranch(branch: ThoughtBranch) {
+            val start = branch.start
+            if (start is BranchResultNode && start.value in outResults) {
+                throw LoqiDomainBuildException(
+                    line,
+                    "Cannot redirect `${start.value}` to out when it is the start of a nested thought branch"
+                )
+            }
+            visitNode(start, null)
+        }
+
+        visitNode = fun(node: DecisionTreeNode, rootReplace: ((BranchResultNode) -> Unit)?) {
+            if (!seen.add(node)) {
+                return
+            }
+
+            if (node is BranchResultNode) {
+                if (node.value in outResults) {
+                    rootReplace?.invoke(node)
+                        ?: throw LoqiDomainBuildException(
+                            line,
+                            "Cannot redirect `${node.value}` to out when it is the start of a nested thought branch"
+                        )
+                }
+                return
+            }
+
+            when (node) {
+                is CycleAggregationNode -> visitNestedThoughtBranch(node.thoughtBranch)
+                is BranchAggregationNode -> node.thoughtBranches.forEach { visitNestedThoughtBranch(it) }
+                is WhileCycleNode -> visitNestedThoughtBranch(node.thoughtBranch)
+                else -> {}
+            }
+
+            if (node is LinkNode<*>) {
+                visitLinkNodeOutcomes(node)
+            }
+        }
+
+        visitNode(statement.start, ::addRootExit)
+        if (exits.isEmpty()) {
+            throw LoqiDomainBuildException(line, "Fragment call has out redirection, but no matching conclude was found")
+        }
+        return exits
     }
 
     private fun validateFragmentArguments(
@@ -1031,6 +1256,15 @@ class TreeLoqiBuilder(
         return aliases.entries
             .firstOrNull { element in it.value }
             ?.key
+    }
+
+    private fun replaceAlias(oldElement: DecisionTreeElement, newElement: DecisionTreeElement) {
+        aliases.values.forEach { elements ->
+            if (oldElement in elements) {
+                elements.remove(oldElement)
+                elements.add(newElement)
+            }
+        }
     }
 
 }

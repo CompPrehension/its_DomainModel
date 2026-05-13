@@ -235,6 +235,10 @@ aggBranches: branches
            | thoughtBranch out outcomeType // thoughtBranch is agg body
            ;
 
+callRedirBranches: branches
+                 | out outcomeTypeList
+                 ;
+
 branchAggregation: AGG aggregation aggBranches ;
 
 cycleAggregation: CYCLE aggregation '(' exp ')' WITH typedVarLinear aggBranches ;
@@ -258,7 +262,7 @@ namespaceResolution: ID (':' ID)*
 
 callArgs: exp (',' exp)* ','? ;
 
-callStmt: namespaceResolution '(' callArgs? ')'
+callStmt: namespaceResolution '(' callArgs? ')' callRedirBranches?
         ;
 
 branches: '{' branch* '}';
@@ -272,13 +276,16 @@ out: OUT
    ;
 
 branch: outcomeTypeList arrow thoughtBranch ';'?
-      | outcomeType arrow OUT ';'
-      | exp arrow thoughtBranch ';'?
-      | exp arrow OUT ';'
+      | outcomeTypeList arrow OUT ';'
+      | expList arrow thoughtBranch ';'?
+      | expList arrow OUT ';'
       ;
 
 outcomeTypeList: outcomeType (',' outcomeType)* ','?
                ;
+
+expList: exp (',' exp)* ','?
+       ;
 
 outcomeType: CORRECT
            | ERROR
