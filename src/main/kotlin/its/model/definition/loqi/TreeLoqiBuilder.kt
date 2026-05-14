@@ -24,27 +24,55 @@ class TreeLoqiBuilder(
     private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
+    /*
+     * Для statement с `... -> out` запоминаем ключи outcomes, которые нужно
+     * пересоединить к следующему statement при сборке окружающей ThoughtBranch.
+     */
     private val outMap: MutableMap<DecisionTreeElement, List<Any>> = mutableMapOf()
     private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
     private val fragments: MutableMap<String, RegisteredFragment> = mutableMapOf()
+
+    /*
+     * Встраивание фрагментов должно быть рекурсивно, но рекурсивные вызовы
+     * фрагментов запрещены. Стек также нужен для подстановки переменных
+     * фрагмента в переменные места вызова.
+     */
     private val fragmentInliningStack = ArrayDeque<FragmentInliningContext>()
     private val fragmentCallStack = ArrayDeque<String>()
 
     // TODO: needs more refactoring, more debugging
 
+    /*
+     * Результат разбора блока веток:
+     * - `out`: ключи outcomes, которые продолжаются в следующий statement;
+     * - `bodyBranches`: анонимные подветви для aggregation;
+     * - `outcomes`: уже собранные переходы по ключам.
+     */
     data class BranchInfo<T>(val out: List<T>, val bodyBranches: List<ThoughtBranch>, val outcomes: Outcomes<T>)
 
+    /*
+     * Statement не всегда равен одному узлу. Например, встроенный фрагмент
+     * имеет стартовый узел, хвост для линейной сборки и открытые выходы `out`.
+     */
     private data class BuiltStatement(
         var start: DecisionTreeNode,
         val tail: DecisionTreeNode,
         var openFragmentExits: List<OpenFragmentExit> = emptyList(),
     )
 
+    /*
+     * У ThoughtBranch публично есть только `start`, но билдеру нужен хвост
+     * последнего statement, чтобы пришивать следующие statement.
+     */
     private data class BuiltThoughtBranch(
         val branch: ThoughtBranch,
         val tail: DecisionTreeNode,
     )
 
+    /*
+     * Тело фрагмента храним как parse tree и пересобираем на каждый вызов:
+     * каждое встраивание должно получить свежие экземпляры узлов.
+     */
     private data class RegisteredFragment(
         val definition: FragmentDef,
         val body: ThoughtBranchContext,
@@ -55,16 +83,29 @@ class TreeLoqiBuilder(
         val variableMapping: Map<String, String>,
     )
 
+    /*
+     * Перенаправления при вызове фрагмента:
+     * - `replacements`: conclude(result) сразу заменяется новой веткой;
+     * - `outResults`: conclude(result) удаляется и соединяется со следующим statement.
+     */
     private data class FragmentCallRedirects(
         val replacements: Map<BranchResult, DecisionTreeNode>,
         val outResults: Set<BranchResult>,
     )
 
+    /*
+     * Отложенная точка замены для fragment `... -> out`.
+     * Lambda знает, как позже заменить конкретный терминальный узел или outcome.
+     */
     private data class OpenFragmentExit(
         val result: BranchResult,
         val replace: (DecisionTreeNode) -> Unit,
     )
 
+    /*
+     * Пока строится ветка-замена для фрагмента, conclude с тем же результатом
+     * тоже должны заменяться. Стек распространяет текущий контекст на вложенные фрагменты.
+     */
     private val fragmentResultReplacementStack = ArrayDeque<Map<BranchResult, DecisionTreeNode>>()
 
     companion object {
@@ -223,8 +264,17 @@ class TreeLoqiBuilder(
         return null
     }
 
+    /*
+     * Здесь соединяется линейная цепочка statement.
+     * Обычный call заканчивается DummyNode, ветвящиеся узлы держат dummy outcomes
+     * в `outMap`, а fragment `out` приносит свои lambdas замены.
+     */
     private fun connectToNextStatement(prev: BuiltStatement, next: DecisionTreeNode) {
         if (prev.openFragmentExits.isNotEmpty()) {
+            /*
+             * Фрагмент мог оставить несколько терминальных conclude, которые надо
+             * продолжить одним и тем же следующим узлом.
+             */
             prev.openFragmentExits.forEach { exit ->
                 exit.replace(next)
             }
@@ -241,6 +291,10 @@ class TreeLoqiBuilder(
             if (outcomes.count() != outKeys.count()) {
                 throw ThisShouldNotHappen()
             } else {
+                /*
+                 * `a, b -> out` превращается в несколько outcomes, которые ведут
+                 * в один следующий statement. Сохраняем ключи, меняем только target.
+                 */
                 outcomes.forEach { outcome ->
                     prevTail.outcomes.remove(outcome)
                     prevTail.outcomes.add(Outcome(outcome.key, next)
@@ -258,6 +312,11 @@ class TreeLoqiBuilder(
         }
     }
 
+    /*
+     * В конце ThoughtBranch обычные `out` outcomes удаляются.
+     * Если тут остался fragment `out`, значит `fragmentCall() out X`
+     * некуда продолжать, и это ошибка сборки.
+     */
     private fun closeOutRedirect(prev: BuiltStatement) {
         if (prev.openFragmentExits.isNotEmpty()) {
             val results = prev.openFragmentExits.map { it.result }.distinct().joinToString(", ")
@@ -273,12 +332,21 @@ class TreeLoqiBuilder(
             } else {
                 outcomes.forEach { outcome ->
                     prevTail.outcomes.remove(outcome)
-                    if (prevTail !is BranchAggregationNode) checkResultReachability(outcome, true) // так как Branch Aggregation Node может завершать ветвь
+                    /*
+                     * BranchAggregationNode допускает завершение ветви собственным результатом,
+                     * поэтому strict-check для него здесь не применяем.
+                     */
+                    if (prevTail !is BranchAggregationNode) checkResultReachability(outcome, true)
                 }
             }
         }
     }
 
+    /*
+     * При `true -> { ... }` у вызова фрагмента подходящие conclude заменяются
+     * прямо во время построения тела фрагмента. Так aliases и вложенные вызовы
+     * сразу получают актуальные узлы.
+     */
     override fun visitConcludeBranchResult(ctx: LoqiGrammarParser.ConcludeBranchResultContext): DecisionTreeNode {
         val result : DecisionTreeNode
         var actionExp: Operator? = null;
@@ -359,6 +427,11 @@ class TreeLoqiBuilder(
         }
     }
 
+    /*
+     * Ветки выражений используют значения question/find как ключи.
+     * `true` и `false` неоднозначны в grammar, поэтому outcomeTypeList здесь
+     * намеренно приводится к Boolean, а не к BranchResult.
+     */
     private fun isExpressionOutcomeBranch(ctx: LoqiGrammarParser.BranchContext): Boolean {
         return ctx.thoughtBranch() != null &&
             (
@@ -374,6 +447,11 @@ class TreeLoqiBuilder(
             )
     }
 
+    /*
+     * Aggregation/cycle branches используют BranchResult-ключи.
+     * Boolean literals в expList принимаются как алиасы CORRECT/ERROR,
+     * чтобы старые LOQI-формы продолжали работать.
+     */
     private fun isBranchResultOutcomeBranch(ctx: LoqiGrammarParser.BranchContext): Boolean {
         return ctx.thoughtBranch() != null &&
             (
@@ -437,8 +515,9 @@ class TreeLoqiBuilder(
         return Outcomes(outcomes)
     }
 
-    /**
-     * Этот метод нужен для того, чтобы решить проблему пересечения outcomeType и exp в ветках (чтобы true/false однозначно стал Boolean)
+    /*
+     * Нужно для корректного определения outcomeType у exp в случае:
+     * в expression-режиме `true/false` должны иметь Boolean.
      */
     fun visitAndObtainBool(exp: LoqiGrammarParser.ExpContext?, outcomeTypeCtx: LoqiGrammarParser.OutcomeTypeContext? ): Boolean? {
         if (exp != null) {
@@ -454,6 +533,10 @@ class TreeLoqiBuilder(
         return null
     }
 
+    /*
+     * Достает ключи для BranchResult-блоков.
+     * Возвращает null, если expList нельзя трактовать как BranchResult.
+     */
     private fun getBranchResultKeys(ctx: LoqiGrammarParser.BranchContext): List<BranchResult>? {
         if (ctx.outcomeTypeList() != null) {
             return ctx.outcomeTypeList().outcomeType().map { parseBranchResult(it) }
@@ -461,6 +544,10 @@ class TreeLoqiBuilder(
         return parseBranchResults(ctx.expList())
     }
 
+    /*
+     * Достает ключи для expression-блоков.
+     * outcomeTypeList здесь допустим только как true/false -> Boolean.
+     */
     private fun getExpressionKeys(ctx: LoqiGrammarParser.BranchContext): List<Any> {
         if (ctx.outcomeTypeList() != null) {
             return ctx.outcomeTypeList().outcomeType().map { outcomeType ->
@@ -474,6 +561,10 @@ class TreeLoqiBuilder(
         return buildExpList(ctx.expList())
     }
 
+    /*
+     * Собирает блоки веток для QuestionNode и FindActionNode.
+     * Несколько ключей могут вести в копии одной ветки или быть помечены как out.
+     */
     fun visitExpressionBranches(ctx: LoqiGrammarParser.ExpBranchesContext, allowOnlyResultOut: Boolean = false): BranchInfo<*> {
         if (ctx.branches() == null) {
             val exp = visitExp(ctx.exp()).unwrap();
@@ -509,12 +600,19 @@ class TreeLoqiBuilder(
             outBranch.isNotEmpty() &&
             outBranch.any { branch -> branch.outcomeTypeList() == null && parseBranchResults(branch.expList()) == null }
         ) {
-            // если требуется обязательно делать out как boolean/result
+            /*
+             * findAction умеет продолжаться только по результатным boolean-веткам,
+             * поэтому произвольные expression keys здесь запрещены.
+             */
             throw LoqiDomainBuildException("You can redirect only one resulting (boolean or branch result) outcome branch");
         }
 
         val outcomeOut = outBranch.flatMap { branch -> getExpressionKeys(branch) }
 
+        /*
+         * `out` не может дублировать уже построенную явную ветку:
+         * иначе один ключ получил бы два разных перехода.
+         */
         val duplicateOut = outcomeOut.firstOrNull { out -> outcomes.any { value -> value.key == out } }
         if (duplicateOut != null) {
             throw LoqiDomainBuildException("Duplicate outcome branch for `$duplicateOut`")
@@ -529,6 +627,11 @@ class TreeLoqiBuilder(
         return BranchInfo(outcomeOut, thoughtBranches, outcomes)
     }
 
+    /*
+     * Собирает блоки веток для aggregation nodes.
+     * Ключи здесь являются BranchResult, а defaultOut поддерживает компактные
+     * формы вроде `{ body } out true`.
+     */
     fun visitAggregationBranches(ctx: LoqiGrammarParser.AggBranchesContext, defaultOut: BranchResult? = null):
             BranchInfo<BranchResult> {
 
@@ -590,6 +693,7 @@ class TreeLoqiBuilder(
                 ?.takeIf { it.exp().size == 1 }
                 ?.let { visitExp(it.exp()[0]) }
 
+            // Идентификатор только маркер
             if (expr is DecisionTreeVarLiteral) {
                 val result = visitThoughtBranch(branch.thoughtBranch()).also { metaAliasForBranch(branch, it)}
                 return@map result
@@ -889,6 +993,11 @@ class TreeLoqiBuilder(
         )
     }
 
+    /*
+     * Встраивание значит "построить тело фрагмента здесь", а не переиспользовать
+     * готовое поддерево. Так metadata, aliases и последующие перенаправления
+     * остаются локальными для места вызова.
+     */
     private fun inlineFragment(fragment: RegisteredFragment, callCtx: CallStmtContext): BuiltStatement {
         val fragmentName = fragment.definition.qualifiedName
         if (fragmentName in fragmentCallStack) {
@@ -918,6 +1027,11 @@ class TreeLoqiBuilder(
         }
     }
 
+    /*
+     * Разбирает redirect после вызова фрагмента:
+     * `out true, false` оставляет подходящие conclude открытыми;
+     * `{ true -> { ... }; false -> out; }` заменяет или открывает каждый result.
+     */
     private fun buildFragmentCallRedirects(ctx: CallRedirBranchesContext?): FragmentCallRedirects {
         if (ctx == null) {
             return FragmentCallRedirects(emptyMap(), emptySet())
@@ -957,6 +1071,11 @@ class TreeLoqiBuilder(
         return FragmentCallRedirects(replacements, outResults)
     }
 
+    /*
+     * Ищет терминальные BranchResultNode, которые нужно удалить из-за `-> out`.
+     * Храним lambdas замены, потому что узел может быть корнем встроенного
+     * statement или child-узлом outcome; эти случаи пересоединяются по-разному.
+     */
     private fun collectOpenFragmentExits(
         statement: BuiltStatement,
         outResults: Set<BranchResult>,
@@ -971,6 +1090,10 @@ class TreeLoqiBuilder(
         lateinit var visitNode: (DecisionTreeNode, ((BranchResultNode) -> Unit)?) -> Unit
 
         fun addRootExit(node: BranchResultNode) {
+            /*
+             * Если сам start фрагмента является conclude, меняем start
+             * BuiltStatement. ThoughtBranch.start остается неизменяемым.
+             */
             exits.add(OpenFragmentExit(node.value) { replacement ->
                 replaceAlias(node, replacement)
                 statement.start = replacement
@@ -978,6 +1101,10 @@ class TreeLoqiBuilder(
         }
 
         fun replaceOutcome(parent: LinkNode<*>, outcome: Outcome<*>, replacement: DecisionTreeNode) {
+            /*
+             * Outcome immutable по target, поэтому создаем новый Outcome
+             * с прежним ключом и новым узлом.
+             */
             val typedParent = parent as LinkNode<Any>
             val typedOutcome = outcome as Outcome<Any>
             val newOutcome = Outcome(typedOutcome.key, replacement)
@@ -1007,6 +1134,10 @@ class TreeLoqiBuilder(
         fun visitNestedThoughtBranch(branch: ThoughtBranch) {
             val start = branch.start
             if (start is BranchResultNode && start.value in outResults) {
+                /*
+                 * У вложенной ThoughtBranch нельзя заменить start без изменения модели,
+                 * поэтому такой `-> out` явно запрещаем.
+                 */
                 throw LoqiDomainBuildException(
                     line,
                     "Cannot redirect `${start.value}` to out when it is the start of a nested thought branch"
@@ -1050,6 +1181,10 @@ class TreeLoqiBuilder(
         return exits
     }
 
+    /*
+     * Аргументы фрагмента - это переменные дерева, захваченные из места вызова.
+     * Поэтому actual argument должен быть variable literal, а не произвольным expression.
+     */
     private fun validateFragmentArguments(
         fragment: RegisteredFragment,
         actualArguments: List<Operator>,
@@ -1077,6 +1212,10 @@ class TreeLoqiBuilder(
         return ctx?.exp()?.map { visitExp(it) } ?: emptyList()
     }
 
+    /*
+     * Имена переменных внутри фрагмента ищутся сначала в самом внутреннем
+     * активном вызове фрагмента, потом во внешних, потом остаются как есть.
+     */
     private fun currentDecisionTreeVarNameResolver(): DecisionTreeVarNameResolver {
         return DecisionTreeVarNameResolver { name -> resolveDecisionTreeVarName(name) }
     }
