@@ -1,6 +1,7 @@
 package its.model.definition.types
 
 import its.model.definition.*
+import its.model.expressions.Operator
 import its.model.expressions.literals.*
 import java.util.*
 import kotlin.reflect.KClass
@@ -87,6 +88,15 @@ sealed class Type<T : Any>(
     }
 
     override fun toString() = this::class.simpleName.toString()
+}
+
+/**
+ * Тип еще невычисленного выражения (применяется в аргументах и возвращаемых значениях процедур)
+ */
+object ExpressionType : Type<Operator>(Operator::class) {
+    override fun castFits(subType: Type<*>): Boolean {
+        return subType is ExpressionType // Инвариантен, приведение невозможно
+    }
 }
 
 /**

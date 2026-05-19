@@ -10,6 +10,7 @@ object BuiltinProcedureRegistry : ProcedureRegistry {
         AssertPointDef(),
         EvalDef(),
         DebugDumpPointDef(),
+        DebugTraceDef(),
         DebugPointDef(),
         SubinterpreterCall(),
         MutableSubinterpreterCall(),
