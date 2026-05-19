@@ -22,6 +22,7 @@ import java.util.*
 class TreeLoqiBuilder(
     private var decisionTree : DecisionTree?,
     private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
+    private val debugMeta: Boolean = false,
 ) : LoqiGrammarBaseVisitor<DecisionTreeElement>() {
 
     /*
@@ -110,14 +111,16 @@ class TreeLoqiBuilder(
 
     companion object {
         @JvmStatic
-        fun buildTree(file: URL): DecisionTree {
+        @JvmOverloads
+        fun buildTree(file: URL, debugMeta: Boolean = false): DecisionTree {
             file.openStream().buffered().reader().use { reader ->
-                return buildTree(reader)
+                return buildTree(reader, debugMeta)
             }
         }
 
         @JvmStatic
-        fun buildTree(reader: Reader): DecisionTree {
+        @JvmOverloads
+        fun buildTree(reader: Reader, debugMeta: Boolean = false): DecisionTree {
             val lexer = LoqiGrammarLexer(CharStreams.fromReader(reader))
             val tokens = CommonTokenStream(lexer)
             val parser = LoqiGrammarParser(tokens)
@@ -128,7 +131,7 @@ class TreeLoqiBuilder(
             val tree: ParseTree = parser.fullTreeDecl()
             errorListener.getSyntaxErrors().firstOrNull()?.exception?.apply { throw this }
 
-            val builder = TreeLoqiBuilder(null)
+            val builder = TreeLoqiBuilder(null, debugMeta = debugMeta)
             tree.accept(builder)
 
             val dt = builder.decisionTree ?: throw LoqiDomainBuildException(-1, "Decision tree is not present")
@@ -171,7 +174,9 @@ class TreeLoqiBuilder(
         val procedure = resolveProcedure(ctx.namespaceResolution())
             ?: throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
         val args = buildCallArgs(ctx.callArgs())
-        return procedure.callNode(args, DummyNode()).asBuiltStatement()
+        return procedure.callNode(args, DummyNode())
+            .withDebugLine(ctx.start.line)
+            .asBuiltStatement()
     }
 
     override fun visitThoughtBranch(ctx: LoqiGrammarParser.ThoughtBranchContext): ThoughtBranch {
@@ -368,6 +373,7 @@ class TreeLoqiBuilder(
             }
             result = BranchResultRedirectingNode(call.asExpr(), actionExp);
         }
+        result.addDebugLine(ctx.start.line)
         if (ctx.id() != null) {
             if (ctx.id().text !in aliases) {
                 aliases[ctx.id().text] = HashSet();
@@ -470,7 +476,7 @@ class TreeLoqiBuilder(
         return WhileCycleNode(visitExp(ctx.exp()),
             branches.bodyBranches[0],
             Outcomes(branches.outcomes)
-        ).also {
+        ).withDebugLine(ctx.start.line).also {
             if (branches.out.isNotEmpty()) {
                 outMap[it] = branches.out.map { out -> out as Any };
             }
@@ -733,7 +739,7 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Branch aggregation requires one and more thought branches (not outcomes)")
         }
 
-        return BranchAggregationNode(agg, branches.bodyBranches, branches.outcomes).also {
+        return BranchAggregationNode(agg, branches.bodyBranches, branches.outcomes).withDebugLine(ctx.start.line).also {
             if (branches.out.isNotEmpty()) {
                 outMap[it] = branches.out.map { out -> out as Any };
             }
@@ -752,7 +758,7 @@ class TreeLoqiBuilder(
         val variable = visitAndGetTypedVar(ctx.typedVarLinear());
 
         return CycleAggregationNode(agg, expr, variable, listOf(),
-            branches.bodyBranches[0], branches.outcomes).also {
+            branches.bodyBranches[0], branches.outcomes).withDebugLine(ctx.start.line).also {
                 if (branches.out.isNotEmpty()) {
                     outMap[it] = branches.out.map { out -> out as Any };
                 }
@@ -786,7 +792,7 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Branch size doesn't match with questions in TupleQuestionNode")
         }
         branches.forEach { checkResultReachability(it) }
-        return TupleQuestionNode(questions, branches)
+        return TupleQuestionNode(questions, branches).withDebugLine(ctx.start.line)
     }
 
     fun parseTuple(ctx: LoqiGrammarParser.TupleContext): ValueTuple {
@@ -807,7 +813,7 @@ class TreeLoqiBuilder(
 
         val trivExpr = if (ctx.exp(1) != null) visitExp(ctx.exp(1)) else null;
         var isSwitch = !ctx.getTokens(SWITCH).isEmpty();
-        return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr).also {
+        return QuestionNode(expr, branches.outcomes as Outcomes<Any>, isSwitch,trivExpr).withDebugLine(ctx.start.line).also {
             if (branches.out.isNotEmpty()) outMap[it] = branches.out.map { out -> out as Any };
         }
     }
@@ -847,7 +853,7 @@ class TreeLoqiBuilder(
         })
 
         return FindActionNode(DecisionTreeVarAssignment(variable, expr),
-            listOf(),decls, boolOutcomes).also {
+            listOf(),decls, boolOutcomes).withDebugLine(ctx.start.line).also {
                 if (branches.out.isNotEmpty()) {
                     outMap[it] = branches.out.map { out -> out as Any }
                 } else if (!boolOutcomes.containsKey(true)) {
@@ -927,6 +933,17 @@ class TreeLoqiBuilder(
 
     private fun MetaOwner.fillMetadata(ctx: MetadataSectionContext?) {
         metadata.fill(ctx)
+    }
+
+    private fun DecisionTreeNode.addDebugLine(line: Int) {
+        if (debugMeta) {
+            metadata.add("line", line)
+        }
+    }
+
+    private fun <T : DecisionTreeNode> T.withDebugLine(line: Int): T {
+        addDebugLine(line)
+        return this
     }
 
     private fun MetaData.fill(ctx: MetadataSectionContext?) {

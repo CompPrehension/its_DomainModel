@@ -42,21 +42,34 @@ class DomainSolvingModel(
      *
      * Деревья решений в любом случае читаются из XML файлов вида '`tree_<имя дерева>.xml`' (подробнее см. [DecisionTreeXMLBuilder])
      */
-    constructor(directoryURL: URL, buildMethod: BuildMethod = BuildMethod.LOQI) : this(
+    constructor(
+        directoryURL: URL,
+        buildMethod: BuildMethod = BuildMethod.LOQI,
+        includeDebugMeta: Boolean = false,
+    ) : this(
         collectDomain(directoryURL, buildMethod),
         collectTags(directoryURL, buildMethod),
-        collectTrees(directoryURL)
+        collectTrees(directoryURL, includeDebugMeta)
     )
 
-    constructor(directoryPath: String, buildMethod: BuildMethod = BuildMethod.LOQI)
-            : this(File(directoryPath).toURI().toURL(), buildMethod)
+    constructor(
+        directoryPath: String,
+        buildMethod: BuildMethod = BuildMethod.LOQI,
+        includeDebugMeta: Boolean = false,
+    ) : this(File(directoryPath).toURI().toURL(), buildMethod, includeDebugMeta)
 
 
-    constructor(domainModel: DomainModel, decisionTreeDirectoryURL: URL)
-            : this(domainModel, emptyMap(), collectTrees(decisionTreeDirectoryURL))
+    constructor(
+        domainModel: DomainModel,
+        decisionTreeDirectoryURL: URL,
+        includeDebugMeta: Boolean = false,
+    ) : this(domainModel, emptyMap(), collectTrees(decisionTreeDirectoryURL, includeDebugMeta))
 
-    constructor(domainModel: DomainModel, decisionTreeDirectoryPath: String)
-            : this(domainModel, File(decisionTreeDirectoryPath).toURI().toURL())
+    constructor(
+        domainModel: DomainModel,
+        decisionTreeDirectoryPath: String,
+        includeDebugMeta: Boolean = false,
+    ) : this(domainModel, File(decisionTreeDirectoryPath).toURI().toURL(), includeDebugMeta)
 
 
     companion object {
@@ -90,7 +103,8 @@ class DomainSolvingModel(
          * Построить набор деревьев решений на основе файлов в директории
          */
         @JvmStatic
-        fun collectTrees(directoryURL: URL): Map<String, DecisionTree> {
+        @JvmOverloads
+        fun collectTrees(directoryURL: URL, includeDebugMeta: Boolean = false): Map<String, DecisionTree> {
             val xmlMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(tree|tpg)_(\\S+)\\.xml"))
                 .map { (fileUrl, regexMatch) ->
                     val (_, name) = regexMatch.destructured
@@ -100,7 +114,7 @@ class DomainSolvingModel(
             val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(tree|tpg)_(\\S+)\\.loqi"))
                 .map { (fileUrl, regexMatch) ->
                     val (_, name) = regexMatch.destructured
-                    name to TreeLoqiBuilder.buildTree(fileUrl)
+                    name to TreeLoqiBuilder.buildTree(fileUrl, includeDebugMeta)
                 }
                 .toMap()
             val tpgMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(\\S+)\\.tpg"))
@@ -109,7 +123,7 @@ class DomainSolvingModel(
                     val name = fileName
                         .removePrefix("tree_")
                         .removePrefix("tpg_")
-                    name to TreeLoqiBuilder.buildTree(fileUrl)
+                    name to TreeLoqiBuilder.buildTree(fileUrl, includeDebugMeta)
                 }
                 .toMap()
             return xmlMap + loqiMap + tpgMap
