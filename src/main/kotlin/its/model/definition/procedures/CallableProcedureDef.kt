@@ -1,5 +1,6 @@
 package its.model.definition.procedures
 
+import its.model.definition.procedures.ProcedureNamespaces.DEBUG
 import its.model.definition.types.Type
 import its.model.expressions.Operator
 import its.model.expressions.operators.CallProcedure
@@ -64,6 +65,10 @@ open class CallableProcedureDef(
 
     fun acceptsArguments(): Boolean {
         return varArgs || arguments.isNotEmpty()
+    }
+
+    fun isDebug(): Boolean {
+        return namespace == DEBUG;
     }
 
     fun hasReturnType(): Boolean {

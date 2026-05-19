@@ -4,7 +4,8 @@ import its.model.definition.types.AnyType
 
 class DebugPointDef() : CallableProcedureDef(
     "print",
-    listOf(ProcedureArgument("comment", AnyType)),
+    listOf(ProcedureArgument("obj", AnyType)),
     namespace = ProcedureNamespaces.DEBUG,
+    returnType = AnyType,
     scopeCapture = false,
 )
