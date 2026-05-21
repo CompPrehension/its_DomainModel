@@ -57,7 +57,6 @@ open class DomainConstructValidationResults(val throwImmediately: Boolean = fals
 
     internal fun invalid(message: String) {
         val e = createInvalid(message)
-        e.fillInStackTrace()
         add(e)
     }
 
@@ -69,7 +68,6 @@ open class DomainConstructValidationResults(val throwImmediately: Boolean = fals
 
     internal fun nonConforming(message: String) {
         val e = DomainNonConformityException(message)
-        e.fillInStackTrace()
         add(e)
     }
 

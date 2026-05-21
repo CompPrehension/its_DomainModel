@@ -80,7 +80,6 @@ open class DomainValidationResults {
 
     internal fun invalid(message: String) {
         val e = InvalidDomainDefinitionException(message)
-        e.fillInStackTrace()
         add(e)
     }
 
@@ -92,7 +91,6 @@ open class DomainValidationResults {
 
     internal fun unknown(message: String) {
         val e = UnknownDomainDefinitionException(message)
-        e.fillInStackTrace()
         add(e)
     }
 
@@ -136,6 +134,5 @@ internal fun checkKnown(condition: Boolean, message: String) {
 internal fun unknown(message: String) {
     throw UnknownDomainDefinitionException(message).fillInStackTrace()
 }
-
 
 
