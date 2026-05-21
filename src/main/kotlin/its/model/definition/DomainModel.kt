@@ -1,11 +1,22 @@
 package its.model.definition
 
+import java.util.concurrent.atomic.AtomicLong
+
 /**
  * Домен - модель предметной области
  */
 class DomainModel : DomainElement() {
     override val domainModel = this
     override val description = "Domain"
+
+    // Версия структуры домена: растет при добавлении/удалении определений и сбрасывает зависящие от них кэши.
+    private val definitionVersionCounter = AtomicLong(0)
+    internal val definitionVersion: Long
+        get() = definitionVersionCounter.get()
+
+    internal fun invalidateDefinitionCaches() {
+        definitionVersionCounter.incrementAndGet()
+    }
 
     val classes = ClassContainer(this)
     val enums = EnumContainer(this)

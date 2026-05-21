@@ -12,13 +12,22 @@ fun <T> getCombinations(possibilities: List<Collection<T>>): List<MutableList<T>
     }
     val firstPossibility: Collection<T> = possibilities.first()
     if (possibilities.size == 1) {
-        return firstPossibility.map { el -> mutableListOf(el) }
+        val result = ArrayList<MutableList<T>>(firstPossibility.size)
+        firstPossibility.mapTo(result) { el ->
+            ArrayList<T>(1).apply { add(el) }
+        }
+        return result
     }
     val otherPossibilities = possibilities.subList(1, possibilities.size)
     val otherPermutations = getCombinations(otherPossibilities)
-    return firstPossibility.flatMap { el ->
-        otherPermutations.map { otherPossibilitiesPerm ->
-            mutableListOf(el).apply { addAll(otherPossibilitiesPerm) }
+    val result = ArrayList<MutableList<T>>(firstPossibility.size * otherPermutations.size)
+    for (el in firstPossibility) {
+        for (otherPossibilitiesPerm in otherPermutations) {
+            result.add(ArrayList<T>(possibilities.size).apply {
+                add(el)
+                addAll(otherPossibilitiesPerm)
+            })
         }
     }
+    return result
 }

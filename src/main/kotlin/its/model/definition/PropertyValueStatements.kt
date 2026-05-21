@@ -85,7 +85,39 @@ typealias ObjectPropertyValueStatement = PropertyValueStatement<ObjectDef>
 class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
     owner: Owner,
 ) : Statements<Owner, PropertyValueStatement<Owner>>(owner) {
-    protected val map = mutableMapOf<String, MutableList<PropertyValueStatement<Owner>>>()
+    protected val map = linkedMapOf<String, MutableList<PropertyValueStatement<Owner>>>()
+
+    // ParamsDecl зависит от объявлений свойств, поэтому привязан к версии структуры домена.
+    private data class ParamsDeclCacheValue(
+        val definitionVersion: Long,
+        val paramsDecl: ParamsDecl?,
+    )
+
+    // Ключ копирует map параметров, чтобы внешний mutable Map не менял уже сохраненный ключ.
+    private data class StatementLookupKey(
+        val propertyName: String,
+        val paramsValuesMap: Map<String, Any>,
+    )
+
+    // Результат lookup зависит и от структуры домена, и от самих statement-ов данного owner.
+    private data class StatementLookupValue(
+        val definitionVersion: Long,
+        val statementsVersion: Long,
+        val statement: PropertyValueStatement<*>?,
+    )
+
+    private val paramsDeclCache = mutableMapOf<String, ParamsDeclCacheValue>()
+    private val statementLookupCache = mutableMapOf<StatementLookupKey, StatementLookupValue>()
+    private val cacheLock = Any()
+    private var statementsVersion: Long = 0
+
+    // Меняются только значения statements; ParamsDecl-кэш при этом остается валидным.
+    private fun invalidateStatementLookupCache() {
+        synchronized(cacheLock) {
+            statementsVersion++
+            statementLookupCache.clear()
+        }
+    }
 
     override fun addToInner(statement: PropertyValueStatement<Owner>) {
         val existing = getExisting(statement)
@@ -96,6 +128,7 @@ class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
         )
         if (existing == null) {
             map.computeIfAbsent(statement.propertyName) { mutableListOf() }.add(statement)
+            invalidateStatementLookupCache()
         }
     }
 
@@ -112,24 +145,53 @@ class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
             if (list.isEmpty()) {
                 map.remove(element.propertyName)
             }
+            invalidateStatementLookupCache()
             return true
         }
         return false
     }
 
-    override fun iterator() = object : MutableMultimapIterator<PropertyValueStatement<Owner>>(map) {
-        override fun remove(value: PropertyValueStatement<Owner>) {
-            removeElement(value)
+    override fun iterator() = MutableMultimapIterator(map) { invalidateStatementLookupCache() }
+
+    override fun clear() {
+        if (map.isNotEmpty()) {
+            map.clear()
+            invalidateStatementLookupCache()
         }
     }
 
-    override fun clear() {
-        map.clear()
-    }
-
     fun get(propertyName: String, paramsValuesMap: Map<String, Any> = mapOf()): PropertyValueStatement<Owner>? {
+        val lookupKey = StatementLookupKey(propertyName, paramsValuesMap.toMap())
+        val definitionVersion = domainModel.definitionVersion
+        val statementsVersionAtStart: Long
+        synchronized(cacheLock) {
+            statementsVersionAtStart = statementsVersion
+            val cached = statementLookupCache[lookupKey]
+            if (
+                cached != null &&
+                cached.definitionVersion == definitionVersion &&
+                cached.statementsVersion == statementsVersionAtStart
+            ) {
+                @Suppress("UNCHECKED_CAST")
+                return cached.statement as PropertyValueStatement<Owner>?
+            }
+        }
+
         val paramsDecl = findParamsDecl(propertyName) ?: ParamsDecl()
-        return map[propertyName]?.firstOrNull { it.matches(propertyName, paramsValuesMap, paramsDecl) }
+        val statement = map[propertyName]?.firstOrNull { it.matches(propertyName, paramsValuesMap, paramsDecl) }
+        synchronized(cacheLock) {
+            if (
+                definitionVersion == domainModel.definitionVersion &&
+                statementsVersionAtStart == statementsVersion
+            ) {
+                statementLookupCache[lookupKey] = StatementLookupValue(
+                    definitionVersion,
+                    statementsVersionAtStart,
+                    statement,
+                )
+            }
+        }
+        return statement
     }
 
     private fun getExisting(statement: PropertyValueStatement<*>): PropertyValueStatement<Owner>? {
@@ -144,7 +206,19 @@ class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
     }
 
     private fun findParamsDecl(propertyName: String): ParamsDecl? {
-        return owner.findPropertyDef(propertyName, DomainValidationResults())?.paramsDecl
+        val version = domainModel.definitionVersion
+        synchronized(cacheLock) {
+            paramsDeclCache[propertyName]?.takeIf { it.definitionVersion == version }?.let {
+                return it.paramsDecl
+            }
+        }
+
+        // Здесь намеренно используется накопительная валидация: отсутствие свойства не должно бросать исключение.
+        val paramsDecl = owner.findPropertyDef(propertyName, DomainValidationResults())?.paramsDecl
+        synchronized(cacheLock) {
+            paramsDeclCache[propertyName] = ParamsDeclCacheValue(version, paramsDecl)
+        }
+        return paramsDecl
     }
 
     override fun validate(results: DomainValidationResults) {

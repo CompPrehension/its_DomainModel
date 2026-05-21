@@ -3,29 +3,40 @@ package mp.utils
 /**
  * Вспомогательный класс итератор для реализации мультимап
  */
-abstract class MutableMultimapIterator<V>(multimap: MutableMap<*, out MutableCollection<V>>) : MutableIterator<V> {
-    private val iterator: MutableIterator<V>
-    private var lastValue: V? = null
-
-    init {
-        iterator = multimap.values.flatMap { it.toList() }.toMutableList().listIterator()
-    }
+class MutableMultimapIterator<V>(
+    multimap: MutableMap<*, out MutableCollection<V>>,
+    // Нужно владельцам мультимапы, чтобы сбросить кэши при удалении через Iterator.remove().
+    private val onRemove: () -> Unit = {},
+) : MutableIterator<V> {
+    private val entryIterator = multimap.entries.iterator()
+    private var valueIterator: MutableIterator<V>? = null
+    private var currentValues: MutableCollection<V>? = null
+    private var canRemove = false
 
 
     override fun hasNext(): Boolean {
-        return iterator.hasNext()
+        if (valueIterator?.hasNext() == true) return true
+        while (entryIterator.hasNext()) {
+            currentValues = entryIterator.next().value
+            valueIterator = currentValues!!.iterator()
+            if (valueIterator!!.hasNext()) return true
+        }
+        return false
     }
 
     override fun next(): V {
-        lastValue = iterator.next()
-        return lastValue!!
+        if (!hasNext()) throw NoSuchElementException()
+        canRemove = true
+        return valueIterator!!.next()
     }
 
     override fun remove() {
-        if (lastValue != null) {
-            remove(lastValue!!)
+        if (!canRemove) return
+        valueIterator!!.remove()
+        if (currentValues!!.isEmpty()) {
+            entryIterator.remove()
         }
+        onRemove()
+        canRemove = false
     }
-
-    protected abstract fun remove(value: V)
 }

@@ -5,10 +5,10 @@ package its.model.definition
  * Хранилище определений в домене
  */
 sealed class DefContainer<T : DomainDef<T>> : DomainElement(), MutableCollection<T> {
-    private val values: MutableMap<String, T> = mutableMapOf()
+    private val values: MutableMap<String, T> = linkedMapOf()
     override fun iterator() = values.values.iterator()
 
-    private val builtInValues: MutableMap<String, T> = mutableMapOf()
+    private val builtInValues: MutableMap<String, T> = linkedMapOf()
 
     /**
      * Добавить встроенные значения: значения, которые всегда есть в контейнерах данного типа,
@@ -80,6 +80,7 @@ sealed class DefContainer<T : DomainDef<T>> : DomainElement(), MutableCollection
             domainModel.separateMetadata.claimIfPresent(added)
         }
         addTo[added.name] = added
+        domainModel.invalidateDefinitionCaches()
         return added
     }
 
@@ -104,7 +105,7 @@ sealed class DefContainer<T : DomainDef<T>> : DomainElement(), MutableCollection
     }
 
     fun remove(name: String): T? {
-        return values.remove(name)
+        return values.remove(name)?.also { domainModel.invalidateDefinitionCaches() }
     }
 
     override fun removeAll(elements: Collection<T>): Boolean {
@@ -121,7 +122,10 @@ sealed class DefContainer<T : DomainDef<T>> : DomainElement(), MutableCollection
     }
 
     override fun clear() {
-        values.clear()
+        if (values.isNotEmpty()) {
+            values.clear()
+            domainModel.invalidateDefinitionCaches()
+        }
     }
 
     fun subtract(other: Collection<T>) {

@@ -63,7 +63,7 @@ class RelationshipDef(
      * добавляя сообщение о неизвестных отношениях в [results], если такие есть
      */
     internal fun getKnownDependencyLineage(results: DomainValidationResults): List<RelationshipDef> {
-        val lineage = mutableListOf<RelationshipDef>()
+        val lineage = ArrayList<RelationshipDef>(2)
         var p: RelationshipDef? = this
         while (p != null) {
             lineage.add(p)

@@ -1,6 +1,5 @@
 package its.model.build.xml
 
-import its.model.build.xml.XMLBuilder.BuildForTags
 import org.w3c.dom.CDATASection
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -80,7 +79,7 @@ abstract class XMLBuilder<Context : ElementBuildContext, Build : Any> {
     //---- Утилитарные методы ---------
 
     private fun <T : Node> Element.getChildNodesOfType(nodeType: Short, nodeClass: KClass<T>) : List<T>{
-        val out = mutableListOf<T>()
+        val out = ArrayList<T>(childNodes.length)
         var child = this.firstChild
         while (child != null) {
             if (child.nodeType == nodeType && nodeClass.isInstance(child)) {
@@ -250,4 +249,3 @@ open class ElementBuildContext(
 ) : Element by el {
     override fun toString() = "Element '${el.tagName}' used to build a '${buildClass.simpleName}' object"
 }
-

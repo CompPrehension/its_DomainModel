@@ -8,6 +8,64 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
     protected abstract val parentClassName: String?
     abstract val definedPropertyValues: PropertyValueStatements<Self>
 
+    // Снимок наследуемых данных для быстрых runtime-запросов; накопительная валидация ниже остается без кэша.
+    private data class InheritedData(
+        val version: Long,
+        val lineage: List<ClassDef>,
+        val allProperties: List<PropertyDef>,
+        val allRelationships: List<RelationshipDef>,
+        val propertyByName: Map<String, PropertyDef>,
+        val relationshipByName: Map<String, RelationshipDef>,
+    )
+
+    @Volatile
+    private var inheritedDataCache: InheritedData? = null
+    private val inheritedDataCacheLock = Any()
+
+    private fun inheritedData(): InheritedData {
+        val version = domainModel.definitionVersion
+        inheritedDataCache?.takeIf { it.version == version }?.let { return it }
+
+        return synchronized(inheritedDataCacheLock) {
+            inheritedDataCache?.takeIf { it.version == version } ?: buildInheritedData(version).also {
+                inheritedDataCache = it
+            }
+        }
+    }
+
+    private fun buildInheritedData(version: Long): InheritedData {
+        val lineage = getKnownInheritanceLineage(DomainValidationResultsThrowImmediately())
+
+        val allProperties = ArrayList<PropertyDef>(lineage.sumOf { it.declaredProperties.size })
+        val propertyByName = linkedMapOf<String, PropertyDef>()
+        for (clazz in lineage) {
+            for (property in clazz.declaredProperties) {
+                allProperties.add(property)
+                // Первый найденный элемент ближе к текущему классу и повторяет прежнюю логику поиска по lineage.
+                propertyByName.putIfAbsent(property.name, property)
+            }
+        }
+
+        val allRelationships = ArrayList<RelationshipDef>(lineage.sumOf { it.declaredRelationships.size })
+        val relationshipByName = linkedMapOf<String, RelationshipDef>()
+        for (clazz in lineage) {
+            for (relationship in clazz.declaredRelationships) {
+                allRelationships.add(relationship)
+                // Первый найденный элемент ближе к текущему классу и повторяет прежнюю логику поиска по lineage.
+                relationshipByName.putIfAbsent(relationship.name, relationship)
+            }
+        }
+
+        return InheritedData(
+            version,
+            lineage,
+            allProperties,
+            allRelationships,
+            propertyByName,
+            relationshipByName,
+        )
+    }
+
     /**
      * Для валидации - получить класс-родитель,
      * или добавить сообщение о его неизвестности в [results]
@@ -29,7 +87,7 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
      * добавляя сообщение о неизвестных родителях в [results], если такие есть
      */
     internal fun getKnownInheritanceLineage(results: DomainValidationResults): List<ClassDef> {
-        val lineage = mutableListOf<ClassDef>()
+        val lineage = ArrayList<ClassDef>(4)
         var p = if (this is ClassDef) this else getKnownParentClass(results)
         while (p != null) {
             lineage.add(p)
@@ -46,6 +104,10 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
      * Валидация - найти определение свойства по имени; любые ошибки кладутся в [results]
      */
     internal fun findPropertyDef(propertyName: String, results: DomainValidationResults): PropertyDef? {
+        if (results is DomainValidationResultsThrowImmediately) {
+            // Быстрый путь только для операций на валидном домене; обычная валидация должна накопить все ошибки.
+            return inheritedData().propertyByName[propertyName]
+        }
         for (clazz in getKnownInheritanceLineage(results)) {
             val found = clazz.declaredProperties.get(propertyName)
             if (found != null) return found
@@ -60,6 +122,10 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
         relationshipName: String,
         results: DomainValidationResults
     ): RelationshipDef? {
+        if (results is DomainValidationResultsThrowImmediately) {
+            // Быстрый путь только для операций на валидном домене; обычная валидация должна накопить все ошибки.
+            return inheritedData().relationshipByName[relationshipName]
+        }
         for (clazz in getKnownInheritanceLineage(results)) {
             val found = clazz.declaredRelationships.get(relationshipName)
             if (found != null) return found
@@ -80,7 +146,7 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
     /**
      * Получить цепочку классов объекта
      */
-    fun getInheritanceLineage() = getKnownInheritanceLineage(DomainValidationResultsThrowImmediately())
+    fun getInheritanceLineage() = inheritedData().lineage.toMutableList()
 
     /**
      * Наследуется ли от класса
@@ -97,9 +163,7 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
      */
     val allProperties: List<PropertyDef>
         get() {
-            val list = mutableListOf<PropertyDef>()
-            getInheritanceLineage().forEach { list.addAll(it.declaredProperties) }
-            return list
+            return inheritedData().allProperties.toMutableList()
         }
 
     /**
@@ -113,9 +177,7 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
      */
     val allRelationships: List<RelationshipDef>
         get() {
-            val list = mutableListOf<RelationshipDef>()
-            getInheritanceLineage().forEach { list.addAll(it.declaredRelationships) }
-            return list
+            return inheritedData().allRelationships.toMutableList()
         }
 
     /**
@@ -135,7 +197,7 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
         )
         val defined = definedPropertyValues.get(propertyName, paramsValuesMap)
         if (defined != null) return defined.value
-        for (clazz in getInheritanceLineage()) {
+        for (clazz in inheritedData().lineage) {
             val found = clazz.definedPropertyValues.get(propertyName, paramsValuesMap)
             if (found != null) return found.value
         }
