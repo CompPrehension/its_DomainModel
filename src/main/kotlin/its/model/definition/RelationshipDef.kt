@@ -15,6 +15,35 @@ class RelationshipDef(
     override val description = "relationship ${subjectClassName}->$name(${objectClassNames.joinToString(", ")})"
     override val reference = RelationshipRef(subjectClassName, name)
 
+    private data class ResolvedClasses(
+        val version: Long,
+        // Разрешенный класс-субъект отношения для runtime-доступа.
+        val subjectClass: ClassDef,
+        // Разрешенные классы-объекты отношения для runtime-доступа.
+        val objectClasses: List<ClassDef>,
+    )
+
+    @Volatile
+    private var resolvedClassesCache: ResolvedClasses? = null
+    private val resolvedClassesCacheLock = Any()
+
+    private fun resolvedClasses(): ResolvedClasses {
+        val version = domainModel.definitionVersion
+        val cached = resolvedClassesCache
+        if (cached != null && cached.version == version) return cached
+
+        return synchronized(resolvedClassesCacheLock) {
+            val lockedCached = resolvedClassesCache
+            if (lockedCached != null && lockedCached.version == version) lockedCached else ResolvedClasses(
+                version,
+                getKnownSubjectClass(DomainValidationResultsThrowImmediately())!!,
+                getKnownObjectClasses(DomainValidationResultsThrowImmediately()).requireNoNulls(),
+            ).also {
+                resolvedClassesCache = it
+            }
+        }
+    }
+
     /**
      * Для валидации - получить известный класс-субъект отношения
      * или добавить сообщение о его неизвестности в [results]
@@ -197,13 +226,13 @@ class RelationshipDef(
      * Класс-субъект отношения
      */
     val subjectClass: ClassDef
-        get() = getKnownSubjectClass(DomainValidationResultsThrowImmediately())!!
+        get() = resolvedClasses().subjectClass
 
     /**
      * Классы-объекты отношения
      */
     val objectClasses: List<ClassDef>
-        get() = getKnownObjectClasses(DomainValidationResultsThrowImmediately()).requireNoNulls()
+        get() = resolvedClasses().objectClasses
 
     /**
      * Задает ли отношение шкалу

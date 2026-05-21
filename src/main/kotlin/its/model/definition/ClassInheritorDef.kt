@@ -9,20 +9,29 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
     abstract val definedPropertyValues: PropertyValueStatements<Self>
 
     // Снимок наследуемых данных для быстрых runtime-запросов; накопительная валидация ниже остается без кэша.
-    private data class InheritedData(
+    private data class InheritedDataIndex(
         val version: Long,
+        // Цепочка классов от ближайшего класса к более общим родителям.
         val lineage: List<ClassDef>,
+        // Индекс имен классов из lineage для быстрых проверок наследования по имени.
+        val lineageByName: Set<String>,
+        // Индекс классов из lineage для быстрых проверок наследования по объекту ClassDef.
+        val lineageSet: Set<ClassDef>,
+        // Список всех доступных свойств в порядке прежнего обхода lineage.
         val allProperties: List<PropertyDef>,
+        // Список всех доступных отношений в порядке прежнего обхода lineage.
         val allRelationships: List<RelationshipDef>,
+        // Индекс первого доступного свойства по имени.
         val propertyByName: Map<String, PropertyDef>,
+        // Индекс первого доступного отношения по имени.
         val relationshipByName: Map<String, RelationshipDef>,
     )
 
     @Volatile
-    private var inheritedDataCache: InheritedData? = null
+    private var inheritedDataCache: InheritedDataIndex? = null
     private val inheritedDataCacheLock = Any()
 
-    private fun inheritedData(): InheritedData {
+    private fun inheritedData(): InheritedDataIndex {
         val version = domainModel.definitionVersion
         val cached = inheritedDataCache
         if (cached != null && cached.version == version) return cached
@@ -35,7 +44,7 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
         }
     }
 
-    private fun buildInheritedData(version: Long): InheritedData {
+    private fun buildInheritedData(version: Long): InheritedDataIndex {
         val lineage = getKnownInheritanceLineage(DomainValidationResultsThrowImmediately())
 
         val allProperties = ArrayList<PropertyDef>(lineage.sumOf { it.declaredProperties.size })
@@ -58,9 +67,11 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
             }
         }
 
-        return InheritedData(
+        return InheritedDataIndex(
             version,
             lineage,
+            lineage.mapTo(HashSet(lineage.size)) { it.name },
+            lineage.toHashSet(),
             allProperties,
             allRelationships,
             propertyByName,
@@ -153,12 +164,12 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
     /**
      * Наследуется ли от класса
      */
-    fun inheritsFrom(className: String) = getInheritanceLineage().any { it.name == className }
+    fun inheritsFrom(className: String) = className in inheritedData().lineageByName
 
     /**
      * Наследуется ли от класса
      */
-    fun inheritsFrom(classDef: ClassDef) = getInheritanceLineage().contains(classDef)
+    fun inheritsFrom(classDef: ClassDef) = classDef in inheritedData().lineageSet
 
     /**
      * Все определенные для данной сущности свойства

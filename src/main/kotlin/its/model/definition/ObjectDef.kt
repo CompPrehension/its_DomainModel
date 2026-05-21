@@ -95,6 +95,46 @@ class ObjectDef(
 }
 
 class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(domainModel) {
+    private data class ObjectClassIndex(
+        val version: Long,
+        // Таблица объектов по имени каждого класса из их lineage.
+        val objectsByClassName: Map<String, List<ObjectDef>>,
+    )
+
+    @Volatile
+    private var objectClassIndexCache: ObjectClassIndex? = null
+    private val objectClassIndexCacheLock = Any()
+
+    private fun objectClassIndex(): ObjectClassIndex {
+        val version = domainModel.definitionVersion
+        val cached = objectClassIndexCache
+        if (cached != null && cached.version == version) return cached
+
+        return synchronized(objectClassIndexCacheLock) {
+            val lockedCached = objectClassIndexCache
+            if (lockedCached != null && lockedCached.version == version) lockedCached else buildObjectClassIndex(version).also {
+                objectClassIndexCache = it
+            }
+        }
+    }
+
+    private fun buildObjectClassIndex(version: Long): ObjectClassIndex {
+        val objectsByClassName = linkedMapOf<String, MutableList<ObjectDef>>()
+        for (objectDef in this) {
+            for (clazz in objectDef.getInheritanceLineage()) {
+                objectsByClassName.computeIfAbsent(clazz.name) { mutableListOf() }.add(objectDef)
+            }
+        }
+        return ObjectClassIndex(
+            version,
+            objectsByClassName.mapValues { (_, objects) -> objects.toList() },
+        )
+    }
+
+    internal fun objectsAssignableTo(className: String): List<ObjectDef> {
+        return objectClassIndex().objectsByClassName[className] ?: emptyList()
+    }
+
     override fun validate(results: DomainValidationResults) {
         super.validate(results)
 
