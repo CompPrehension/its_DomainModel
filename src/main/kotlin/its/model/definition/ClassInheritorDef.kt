@@ -24,10 +24,12 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
 
     private fun inheritedData(): InheritedData {
         val version = domainModel.definitionVersion
-        inheritedDataCache?.takeIf { it.version == version }?.let { return it }
+        val cached = inheritedDataCache
+        if (cached != null && cached.version == version) return cached
 
         return synchronized(inheritedDataCacheLock) {
-            inheritedDataCache?.takeIf { it.version == version } ?: buildInheritedData(version).also {
+            val lockedCached = inheritedDataCache
+            if (lockedCached != null && lockedCached.version == version) lockedCached else buildInheritedData(version).also {
                 inheritedDataCache = it
             }
         }

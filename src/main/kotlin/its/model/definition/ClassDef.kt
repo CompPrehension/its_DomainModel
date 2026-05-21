@@ -121,13 +121,17 @@ class ClassDef(
     val projectionRelationships: List<RelationshipDef>
         get() = allRelationships.filter { it.isBinary && it.effectiveQuantifier.subjCount == 1 }
 
+    private fun findProjectionRelationships(other: ClassDef): List<RelationshipDef> {
+        return projectionRelationships.filter { it.objectClasses.first().isSubclassOf(other) }
+    }
+
     /**
      * Отношение, с помощью которого данный класс может быть спроецирован на [other], с учетом наследования
      * @throws ModelMisuseException если такого отношения нет, или оно не одно
      * @see canBeProjectedOnto
      */
     fun getProjectionRelationship(other: ClassDef): RelationshipDef {
-        val fittingRelationships = projectionRelationships.filter { it.objectClasses.first().isSubclassOf(other) }
+        val fittingRelationships = findProjectionRelationships(other)
         preventMisuse(
             fittingRelationships.isNotEmpty(),
             "No projection relationship exists from $description onto ${other.description}"
@@ -145,12 +149,8 @@ class ClassDef(
      * @see getProjectionRelationship
      */
     fun canBeProjectedOnto(other: ClassDef): Boolean {
-        return try {
-            getProjectionRelationship(other)
-            true
-        } catch (e: ModelMisuseException) {
-            false
-        }
+        // Это горячий предикат: он повторяет условия getProjectionRelationship, но не создает исключение для обычного ответа false.
+        return findProjectionRelationships(other).size == 1
     }
 
     /**
