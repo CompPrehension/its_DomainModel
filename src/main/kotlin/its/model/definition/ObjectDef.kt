@@ -131,7 +131,7 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
         )
     }
 
-    internal fun objectsAssignableTo(className: String): List<ObjectDef> {
+    fun objectsAssignableTo(className: String): List<ObjectDef> {
         return objectClassIndex().objectsByClassName[className] ?: emptyList()
     }
 
