@@ -5,8 +5,6 @@ import its.model.definition.EnumValueRef
 import its.model.definition.MetaData
 import its.model.definition.MetaOwner
 import its.model.definition.MetadataPropertyValue
-import its.model.definition.loqi.LoqiStringUtils.insertEscapes
-import its.model.definition.loqi.LoqiStringUtils.isSimpleLoqiName
 import its.model.definition.loqi.LoqiStringUtils.toLoqiName
 import its.model.expressions.Operator
 import its.model.nodes.*
@@ -89,6 +87,7 @@ class TreeLoqiWriter private constructor(
         val falseBr = node.outcomes.find { it.key == false }
         if (!node.isSwitch && node.trivialityExpr == null && trueBr != null && falseBr != null
             && trueBr.node !is DummyNode && falseBr.node !is DummyNode && node.outcomes.size == 2
+            && falseBr.metadata.loqiLinkAlias() == null
         ) {
             writeBooleanAskOutElse(node, prefix, trueBr, falseBr)
             return
@@ -129,7 +128,7 @@ class TreeLoqiWriter private constructor(
             writer.newLine()
             writer.indent()
             if (isLast) {
-                writer.writeln("true -> out;")
+                writer.writeln("true -> ${formatOut(outcome.metadata)};")
                 if (outcomes.size > 1) {
                     writer.write("false -> {")
                     writer.newLine()
@@ -139,7 +138,7 @@ class TreeLoqiWriter private constructor(
                     writer.writeln("};")
                 }
             } else {
-                writer.write("true -> {")
+                writer.write("true ${formatArrow(outcome.metadata)} {")
                 writer.newLine()
                 writer.indent()
                 writeSubtree(outcome.node)
@@ -168,7 +167,8 @@ class TreeLoqiWriter private constructor(
         writer.indent()
         for (outcome in node.outcomes) {
             if (outcome == outOutcome) {
-                writer.writeln("${formatOutcomeKey(outcome.key)} -> out;")
+                queueNodeMeta(outcome)
+                writer.writeln("${formatOutcomeKey(outcome.key)} -> ${formatOut(outcome.metadata)};")
             } else {
                 writeQuestionOutcomeBranch(outcome)
             }
@@ -184,8 +184,9 @@ class TreeLoqiWriter private constructor(
         trueBr: Outcome<*>,
         falseBr: Outcome<*>,
     ) {
+        queueNodeMeta(trueBr)
         writer.write(prefix)
-        writer.write(" out true else {")
+        writer.write(" ${formatOut(trueBr.metadata)} true else {")
         writer.newLine()
         writer.indent()
         writeSubtree(falseBr.node)
@@ -198,7 +199,8 @@ class TreeLoqiWriter private constructor(
     private fun writeQuestionOutcomes(node: QuestionNode) {
         for (outcome in node.outcomes) {
             if (outcome.node is DummyNode) {
-                writer.writeln("${formatOutcomeKey(outcome.key)} -> out;")
+                queueNodeMeta(outcome)
+                writer.writeln("${formatOutcomeKey(outcome.key)} -> ${formatOut(outcome.metadata)};")
             } else {
                 writeQuestionOutcomeBranch(outcome)
             }
@@ -206,7 +208,8 @@ class TreeLoqiWriter private constructor(
     }
 
     private fun writeQuestionOutcomeBranch(outcome: Outcome<*>) {
-        writer.write("${formatOutcomeKey(outcome.key as Any)} -> {")
+        queueNodeMeta(outcome)
+        writer.write("${formatOutcomeKey(outcome.key as Any)} ${formatArrow(outcome.metadata)} {")
         writer.newLine()
         writer.indent()
         writeSubtree(outcome.node)
@@ -240,7 +243,8 @@ class TreeLoqiWriter private constructor(
         writer.indent()
         for (outcome in node.outcomes) {
             if (outcome.node is DummyNode) {
-                writer.writeln("${formatOutcomeKey(outcome.key)} -> out;")
+                queueNodeMeta(outcome)
+                writer.writeln("${formatOutcomeKey(outcome.key)} -> ${formatOut(outcome.metadata)};")
             } else {
                 writeQuestionOutcomeBranch(outcome)
             }
@@ -263,8 +267,7 @@ class TreeLoqiWriter private constructor(
         writer.indent()
         for (branch in node.thoughtBranches) {
             queueNodeMeta(branch)
-            val label = branchLabel(branch.metadata)
-            writer.writeln("$label -> {")
+            writer.writeln("${branchLabel()} ${formatArrow(branch.metadata)} {")
             writer.indent()
             writeSubtree(branch.start)
             writer.unindent()
@@ -284,7 +287,7 @@ class TreeLoqiWriter private constructor(
         writer.writeln(" {")
         writer.indent()
         queueNodeMeta(node.thoughtBranch)
-        writer.writeln("${branchLabel(node.thoughtBranch.metadata)} -> {")
+        writer.writeln("${branchLabel()} ${formatArrow(node.thoughtBranch.metadata)} {")
         writer.indent()
         writeSubtree(node.thoughtBranch.start)
         writer.unindent()
@@ -304,7 +307,7 @@ class TreeLoqiWriter private constructor(
         writer.writeln(" {")
         writer.indent()
         queueNodeMeta(node.thoughtBranch)
-        writer.writeln("${branchLabel(node.thoughtBranch.metadata)} -> {")
+        writer.writeln("${branchLabel()} ${formatArrow(node.thoughtBranch.metadata)} {")
         writer.indent()
         writeSubtree(node.thoughtBranch.start)
         writer.unindent()
@@ -324,7 +327,7 @@ class TreeLoqiWriter private constructor(
         }
     }
 
-    /** Expands 2-part tuple question into nested boolean asks (ask tuple header parsing is fragile). */
+    /** Expands 2-part tuple question into nested asks while preserving branch meta ids. */
     private fun writeBinaryTupleQuestion(node: TupleQuestionNode) {
         val e1 = node.parts[0].expr.loqiCompact()
         val e2 = node.parts[1].expr.loqiCompact()
@@ -337,30 +340,48 @@ class TreeLoqiWriter private constructor(
         val ff = findTupleOutcome(node.outcomes, false, false)
             ?: throw IllegalStateException("Missing tuple outcome for (false; false)")
 
-        writer.write("ask ( $e1 ) out true else {")
+        writer.write("ask ( $e1 ) {")
         writer.newLine()
         writer.indent()
-        writeBooleanPairAsk(e2, ft, ff)
+        writeBooleanOutcomeBranch(true, tt, tf, e2)
+        writeBooleanOutcomeBranch(false, ft, ff, e2)
         writer.unindent()
         writer.write("}")
         finishStmtAlias(node.metadata)
-        writeBooleanPairAsk(e2, tt, tf)
     }
 
-    private fun writeBooleanPairAsk(expr: String, trueNode: DecisionTreeNode, falseNode: DecisionTreeNode) {
-        writer.write("ask ( $expr ) out true else {")
+    private fun writeBooleanOutcomeBranch(
+        key: Boolean,
+        trueOutcome: Outcome<ValueTuple>,
+        falseOutcome: Outcome<ValueTuple>,
+        expr: String,
+    ) {
+        writer.write("${formatOutcomeKey(key)} -> {")
         writer.newLine()
         writer.indent()
-        writeSubtree(falseNode)
+        writeBooleanPairAsk(expr, trueOutcome, falseOutcome)
         writer.unindent()
         writer.writeln("};")
-        writeSubtree(trueNode)
     }
 
-    private fun findTupleOutcome(outcomes: Outcomes<ValueTuple>, v1: Boolean, v2: Boolean): DecisionTreeNode? {
+    private fun writeBooleanPairAsk(
+        expr: String,
+        trueOutcome: Outcome<ValueTuple>,
+        falseOutcome: Outcome<ValueTuple>,
+    ) {
+        writer.write("ask ( $expr ) {")
+        writer.newLine()
+        writer.indent()
+        writeQuestionOutcomeBranch(trueOutcome.withKey(true))
+        writeQuestionOutcomeBranch(falseOutcome.withKey(false))
+        writer.unindent()
+        writer.writeln("};")
+    }
+
+    private fun findTupleOutcome(outcomes: Outcomes<ValueTuple>, v1: Boolean, v2: Boolean): Outcome<ValueTuple>? {
         return outcomes.find { outcome ->
             outcome.key.size >= 2 && outcome.key[0] == v1 && outcome.key[1] == v2
-        }?.node
+        }
     }
 
     override fun process(node: ProcedureCallNode) {
@@ -370,9 +391,11 @@ class TreeLoqiWriter private constructor(
     private fun writeBranchResultOutcomes(outcomes: Outcomes<BranchResult>) {
         for (outcome in outcomes) {
             if (outcome.node is DummyNode) {
-                writer.writeln("${formatBranchResult(outcome.key)} -> out;")
+                queueNodeMeta(outcome)
+                writer.writeln("${formatBranchResult(outcome.key)} -> ${formatOut(outcome.metadata)};")
             } else {
-                writer.write("${formatBranchResult(outcome.key)} -> {")
+                queueNodeMeta(outcome)
+                writer.write("${formatBranchResult(outcome.key)} ${formatArrow(outcome.metadata)} {")
                 writer.newLine()
                 writer.indent()
                 writeSubtree(outcome.node)
@@ -414,8 +437,16 @@ class TreeLoqiWriter private constructor(
         }
     }
 
-    private fun branchLabel(metadata: MetaData): String {
-        return metadata.loqiLinkAlias()?.toLoqiName() ?: "_"
+    private fun branchLabel(): String = "_"
+
+    private fun formatArrow(metadata: MetaData): String {
+        val linkAlias = metadata.loqiLinkAlias()?.toLoqiName() ?: return "->"
+        return "-[$linkAlias]->"
+    }
+
+    private fun formatOut(metadata: MetaData): String {
+        val linkAlias = metadata.loqiLinkAlias()?.toLoqiName() ?: return "out"
+        return "out[$linkAlias]"
     }
 
     private fun queueNodeMeta(owner: MetaOwner) {
@@ -464,12 +495,18 @@ class TreeLoqiWriter private constructor(
 
     private fun metaForName(alias: String): String = alias.toLoqiName()
 
-    /** LOQI-safe alias for `as` / `meta for` / branch labels; human-readable XML aliases fall back to n{TEMPLATING_ID}. */
+    /** LOQI-safe alias for `as`, `meta for`, `-[id]->`, and `out[id]`; human-readable XML aliases fall back to n{TEMPLATING_ID}. */
     private fun MetaData.loqiLinkAlias(): String? {
         val alias = getString("alias")
         if (!alias.isNullOrBlank() && alias.none { it.isWhitespace() }) return alias
         val tid = getString("TEMPLATING_ID") ?: return null
         return "n$tid"
+    }
+
+    private fun Outcome<ValueTuple>.withKey(key: Boolean): Outcome<Boolean> {
+        val copy = Outcome(key, node)
+        copy.metadata.addAll(metadata)
+        return copy
     }
 
     private fun MetaData.writeMetadataBlock(writer: IndentWriter, terminateMetaDecl: Boolean = false) {

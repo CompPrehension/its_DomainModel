@@ -700,10 +700,9 @@ class TreeLoqiBuilder(
                 ?.takeIf { it.exp().size == 1 }
                 ?.let { visitExp(it.exp()[0]) }
 
-            // Идентификатор только маркер
+            // Идентификатор здесь только синтаксический маркер ветки, не meta-id alias.
             if (expr is DecisionTreeVarLiteral) {
                 val result = visitThoughtBranch(branch.thoughtBranch())
-                registerAlias(expr.name, result)
                 metaAliasForBranch(branch, result)
                 return@map result
             } else {
