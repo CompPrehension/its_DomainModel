@@ -238,6 +238,20 @@ class TreeLoqiWriter private constructor(
             )
             writer.write(")")
         }
+        if (node.errorCategories.isNotEmpty()) {
+            writer.write(" error (")
+            writer.write(
+                node.errorCategories.joinToString(", ") { category ->
+                    queueNodeMeta(category)
+                    buildString {
+                        append("${category.priority} : ${category.checkedVariable.className.toLoqiName()}")
+                        category.metadata.loqiLinkAlias()?.let { append(" as ${it.toLoqiName()}") }
+                        append(" -> ${category.selectorExpr.loqiCompact()}")
+                    }
+                }
+            )
+            writer.write(")")
+        }
         writer.write(" = ${node.varAssignment.valueExpr.loqiCompact()}")
         writer.writeln(" {")
         writer.indent()
@@ -254,10 +268,6 @@ class TreeLoqiWriter private constructor(
         }
         writer.unindent()
         finishStmt(node.metadata)
-        node.errorCategories.forEach { err ->
-            val alias = err.metadata.loqiLinkAlias() ?: "findError_${err.priority}"
-            queueMetaFor(alias, err.metadata, err.selectorExpr)
-        }
     }
 
     override fun process(node: BranchAggregationNode) {
@@ -280,10 +290,22 @@ class TreeLoqiWriter private constructor(
 
     override fun process(node: CycleAggregationNode) {
         queueNodeMeta(node)
-        writer.write(
-            "cycle ${node.aggregationMethod.name.lowercase()} ( ${node.selectorExpr.loqiCompact()} ) " +
-                "with ${node.variable.className.toLoqiName()} ${node.variable.varName.toLoqiName()}"
-        )
+        writer.write("cycle ${node.aggregationMethod.name.lowercase()} ( ${node.selectorExpr.loqiCompact()} )")
+        if (node.errorCategories.isNotEmpty()) {
+            writer.write(" error (")
+            writer.write(
+                node.errorCategories.joinToString(", ") { category ->
+                    queueNodeMeta(category)
+                    buildString {
+                        append("${category.priority} : ${category.checkedVariable.className.toLoqiName()}")
+                        category.metadata.loqiLinkAlias()?.let { append(" as ${it.toLoqiName()}") }
+                        append(" -> ${category.selectorExpr.loqiCompact()}")
+                    }
+                }
+            )
+            writer.write(")")
+        }
+        writer.write(" with ${node.variable.className.toLoqiName()} ${node.variable.varName.toLoqiName()}")
         writer.writeln(" {")
         writer.indent()
         queueNodeMeta(node.thoughtBranch)
@@ -295,10 +317,6 @@ class TreeLoqiWriter private constructor(
         writeBranchResultOutcomes(node.outcomes)
         writer.unindent()
         finishStmt(node.metadata)
-        node.errorCategories.forEach { err ->
-            val alias = err.metadata.loqiLinkAlias() ?: "findError_${err.priority}"
-            queueMetaFor(alias, err.metadata, err.selectorExpr)
-        }
     }
 
     override fun process(node: WhileCycleNode) {
@@ -319,69 +337,22 @@ class TreeLoqiWriter private constructor(
 
     override fun processTupleQuestionNode(node: TupleQuestionNode) {
         queueNodeMeta(node)
-        when (node.parts.size) {
-            2 -> writeBinaryTupleQuestion(node)
-            else -> throw UnsupportedOperationException(
-                "TupleQuestionNode with ${node.parts.size} parts is not supported by TreeLoqiWriter"
-            )
-        }
-    }
-
-    /** Expands 2-part tuple question into nested asks while preserving branch meta ids. */
-    private fun writeBinaryTupleQuestion(node: TupleQuestionNode) {
-        val e1 = node.parts[0].expr.loqiCompact()
-        val e2 = node.parts[1].expr.loqiCompact()
-        val tt = findTupleOutcome(node.outcomes, true, true)
-            ?: throw IllegalStateException("Missing tuple outcome for (true; true)")
-        val tf = findTupleOutcome(node.outcomes, true, false)
-            ?: throw IllegalStateException("Missing tuple outcome for (true; false)")
-        val ft = findTupleOutcome(node.outcomes, false, true)
-            ?: throw IllegalStateException("Missing tuple outcome for (false; true)")
-        val ff = findTupleOutcome(node.outcomes, false, false)
-            ?: throw IllegalStateException("Missing tuple outcome for (false; false)")
-
-        writer.write("ask ( $e1 ) {")
-        writer.newLine()
+        writer.write("ask tuple ( ")
+        writer.write(node.parts.joinToString("; ") { it.expr.loqiCompact() })
+        writer.writeln(" ) {")
         writer.indent()
-        writeBooleanOutcomeBranch(true, tt, tf, e2)
-        writeBooleanOutcomeBranch(false, ft, ff, e2)
+        for (outcome in node.outcomes) {
+            queueNodeMeta(outcome)
+            writer.write("${formatTupleKey(outcome.key)} ${formatArrow(outcome.metadata)} {")
+            writer.newLine()
+            writer.indent()
+            writeSubtree(outcome.node)
+            writer.unindent()
+            writer.writeln("};")
+        }
         writer.unindent()
         writer.write("}")
         finishStmtAlias(node.metadata)
-    }
-
-    private fun writeBooleanOutcomeBranch(
-        key: Boolean,
-        trueOutcome: Outcome<ValueTuple>,
-        falseOutcome: Outcome<ValueTuple>,
-        expr: String,
-    ) {
-        writer.write("${formatOutcomeKey(key)} -> {")
-        writer.newLine()
-        writer.indent()
-        writeBooleanPairAsk(expr, trueOutcome, falseOutcome)
-        writer.unindent()
-        writer.writeln("};")
-    }
-
-    private fun writeBooleanPairAsk(
-        expr: String,
-        trueOutcome: Outcome<ValueTuple>,
-        falseOutcome: Outcome<ValueTuple>,
-    ) {
-        writer.write("ask ( $expr ) {")
-        writer.newLine()
-        writer.indent()
-        writeQuestionOutcomeBranch(trueOutcome.withKey(true))
-        writeQuestionOutcomeBranch(falseOutcome.withKey(false))
-        writer.unindent()
-        writer.writeln("};")
-    }
-
-    private fun findTupleOutcome(outcomes: Outcomes<ValueTuple>, v1: Boolean, v2: Boolean): Outcome<ValueTuple>? {
-        return outcomes.find { outcome ->
-            outcome.key.size >= 2 && outcome.key[0] == v1 && outcome.key[1] == v2
-        }
     }
 
     override fun process(node: ProcedureCallNode) {
@@ -475,13 +446,6 @@ class TreeLoqiWriter private constructor(
         writer.write("]")
     }
 
-    private fun queueMetaFor(alias: String, metadata: MetaData, condition: Operator) {
-        val copy = MetaData()
-        copy.addAll(metadata)
-        copy.add("condition", condition.loqiCompact())
-        pendingMetaFor.add(alias to copy)
-    }
-
     private fun flushPendingMetaFor() {
         val seen = mutableSetOf<String>()
         for ((alias, metadata) in pendingMetaFor) {
@@ -501,12 +465,6 @@ class TreeLoqiWriter private constructor(
         if (!alias.isNullOrBlank() && alias.none { it.isWhitespace() }) return alias
         val tid = getString("TEMPLATING_ID") ?: return null
         return "n$tid"
-    }
-
-    private fun Outcome<ValueTuple>.withKey(key: Boolean): Outcome<Boolean> {
-        val copy = Outcome(key, node)
-        copy.metadata.addAll(metadata)
-        return copy
     }
 
     private fun MetaData.writeMetadataBlock(writer: IndentWriter, terminateMetaDecl: Boolean = false) {

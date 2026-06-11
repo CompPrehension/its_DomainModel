@@ -241,11 +241,14 @@ callRedirBranches: branches
 
 branchAggregation: AGG aggregation aggBranches ;
 
-cycleAggregation: CYCLE aggregation '(' exp ')' WITH typedVarLinear aggBranches ;
+cycleAggregation: CYCLE aggregation '(' exp ')' findErrorCategories? WITH typedVarLinear aggBranches ;
 
-findAction: VAR typedVar WITH '(' treeVarDecls ')' '=' exp expBranches?
-          | VAR typedVar '=' exp expBranches?
-          ;
+findAction: VAR typedVar (WITH '(' treeVarDecls ')')? findErrorCategories? '=' exp expBranches?
+           ;
+
+findErrorCategories: ERROR '(' findErrorCategory (',' findErrorCategory)* ','? ')';
+
+findErrorCategory: INTEGER ':' type (AS id)? arrow exp;
 
 question: ASK '(' exp ')' expBranches
         | ASK SWITCH '(' exp ')' expBranches

@@ -766,8 +766,9 @@ class TreeLoqiBuilder(
         }
 
         val variable = visitAndGetTypedVar(ctx.typedVarLinear());
+        val errorCategories = buildFindErrorCategories(ctx.findErrorCategories())
 
-        return CycleAggregationNode(agg, expr, variable, listOf(),
+        return CycleAggregationNode(agg, expr, variable, errorCategories,
             branches.bodyBranches[0], branches.outcomes).withDebugLine(ctx.start.line).also {
                 if (branches.out.isNotEmpty()) {
                     outMap[it] = branches.out.map { out -> out as Any };
@@ -829,6 +830,7 @@ class TreeLoqiBuilder(
         val expr = visitExp(ctx.exp());
 
         val decls = ctx.treeVarDecls()?.treeVarDecl()?.map { visitTreeVarAssignment(it) } ?: emptyList()
+        val errorCategories = buildFindErrorCategories(ctx.findErrorCategories())
 
         val branches = if (ctx.expBranches() == null) {
             BranchInfo(listOf(true), listOf(), Outcomes(mutableListOf(
@@ -850,13 +852,25 @@ class TreeLoqiBuilder(
         })
 
         return FindActionNode(DecisionTreeVarAssignment(variable, expr),
-            listOf(), decls, boolOutcomes).withDebugLine(ctx.start.line).also {
+            errorCategories, decls, boolOutcomes).withDebugLine(ctx.start.line).also {
                 if (branches.out.isNotEmpty()) {
                     outMap[it] = branches.out.map { out -> out as Any }
                 } else if (!boolOutcomes.containsKey(true)) {
                     outMap[it] = listOf(true)
                 }
         }
+    }
+
+    private fun buildFindErrorCategories(ctx: LoqiGrammarParser.FindErrorCategoriesContext?): List<FindErrorCategory> {
+        return ctx?.findErrorCategory()?.map { errorCtx ->
+            FindErrorCategory(
+                errorCtx.INTEGER().text.toInt(),
+                visitExp(errorCtx.exp()),
+                TypedVariable(errorCtx.type().text, FindErrorCategory.CHECKED_OBJ),
+            ).also { category ->
+                errorCtx.id()?.let { registerAlias(it.getName(), category) }
+            }
+        } ?: emptyList()
     }
 
     override fun visitFullTreeDecl(ctx: LoqiGrammarParser.FullTreeDeclContext): DecisionTree {
@@ -897,8 +911,6 @@ class TreeLoqiBuilder(
             for (node in aliases[id]!!) {
                 node.fillMetadata(meta.metadataSection())
             }
-        } else if (meta.metadataSection().metadataPropertyDecl().any { it.id().last().getName() == "condition" }) {
-            // FindErrorCategory metadata (meta for + condition) — not reconstructed into AST yet
         } else {
             throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
         }
