@@ -73,6 +73,15 @@ class DomainSolvingModel(
 
 
     companion object {
+       private fun normalizeTreeName(fileName: String): String {
+            return when (fileName) {
+                "tree", "main" -> ""
+                else -> fileName
+                    .removePrefix("tree_")
+                    .removePrefix("tpg_")
+            }
+        }
+
         /**
          * Построить домен на основе файлов в директории
          */
@@ -105,24 +114,24 @@ class DomainSolvingModel(
         @JvmStatic
         @JvmOverloads
         fun collectTrees(directoryURL: URL, includeDebugMeta: Boolean = false): Map<String, DecisionTree> {
-            val xmlMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(tree|tpg)_(\\S+)\\.xml"))
+            val xmlMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("((?:tree|tpg)_\\S+|tree)\\.xml"))
                 .map { (fileUrl, regexMatch) ->
-                    val (_, name) = regexMatch.destructured
+                    val (fileName) = regexMatch.destructured
+                    val name = normalizeTreeName(fileName)
                     name to DecisionTreeXMLBuilder.fromXMLFile(fileUrl.toURI().toString())
                 }
                 .toMap()
-            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(tree|tpg)_(\\S+)\\.loqi"))
+            val loqiMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("((?:tree|tpg)_\\S+|tree)\\.loqi"))
                 .map { (fileUrl, regexMatch) ->
-                    val (_, name) = regexMatch.destructured
+                    val (fileName) = regexMatch.destructured
+                    val name = normalizeTreeName(fileName)
                     name to TreeLoqiBuilder.buildTree(fileUrl, includeDebugMeta)
                 }
                 .toMap()
             val tpgMap = DirectoryScanUtils.findFilesMatching(directoryURL, Regex("(\\S+)\\.tpg"))
                 .map { (fileUrl, regexMatch) ->
                     val (fileName) = regexMatch.destructured
-                    val name = fileName
-                        .removePrefix("tree_")
-                        .removePrefix("tpg_")
+                    val name = normalizeTreeName(fileName)
                     name to TreeLoqiBuilder.buildTree(fileUrl, includeDebugMeta)
                 }
                 .toMap()
