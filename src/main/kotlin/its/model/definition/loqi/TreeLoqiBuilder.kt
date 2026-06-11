@@ -234,7 +234,14 @@ class TreeLoqiBuilder(
         } else if (child is LoqiGrammarParser.FindActionContext) {
             domainOpAt(ctx.start.line) { visitFindAction(child).asBuiltStatement() }
         } else if (child is LoqiGrammarParser.QuestionContext) {
-            domainOpAt(ctx.start.line) { visitQuestion(child).asBuiltStatement() }
+            domainOpAt(ctx.start.line) {
+                val node = if (!child.getTokens(LoqiGrammarParser.TUPLE).isEmpty()) {
+                    visitTupleQuestion(child)
+                } else {
+                    visitQuestion(child)
+                }
+                node.asBuiltStatement()
+            }
         } else if (child is LoqiGrammarParser.CallStmtContext) {
             domainOpAt(ctx.start.line) { visitCallStmtAsBuiltStatement(child) }
         } else {
@@ -242,10 +249,7 @@ class TreeLoqiBuilder(
         }
 
         if (ctx.AS() != null && ctx.id() != null) {
-            if (ctx.id().text !in aliases) {
-                aliases[ctx.id().text] = HashSet();
-            }
-            aliases[ctx.id().text]?.add(result.start);
+            registerAlias(ctx.id().getName(), result.start)
         }
         return result
     }
@@ -338,10 +342,10 @@ class TreeLoqiBuilder(
                 outcomes.forEach { outcome ->
                     prevTail.outcomes.remove(outcome)
                     /*
-                     * BranchAggregationNode допускает завершение ветви собственным результатом,
-                     * поэтому strict-check для него здесь не применяем.
+                     * Outcomes с `-> out` указывают на DummyNode до стыковки со следующим statement.
+                     * При закрытии ветви они снимаются, поэтому strict-проверка здесь неуместна.
                      */
-                    if (prevTail !is BranchAggregationNode) checkResultReachability(outcome, true)
+                    if (prevTail !is BranchAggregationNode) checkResultReachability(outcome, false)
                 }
             }
         }
@@ -375,10 +379,7 @@ class TreeLoqiBuilder(
         }
         result.addDebugLine(ctx.start.line)
         if (ctx.id() != null) {
-            if (ctx.id().text !in aliases) {
-                aliases[ctx.id().text] = HashSet();
-            }
-            aliases[ctx.id().text]?.add(result);
+            registerAlias(ctx.id().getName(), result)
         }
         return result
     }
@@ -701,12 +702,22 @@ class TreeLoqiBuilder(
 
             // Идентификатор только маркер
             if (expr is DecisionTreeVarLiteral) {
-                val result = visitThoughtBranch(branch.thoughtBranch()).also { metaAliasForBranch(branch, it)}
+                val result = visitThoughtBranch(branch.thoughtBranch())
+                registerAlias(expr.name, result)
+                metaAliasForBranch(branch, result)
                 return@map result
             } else {
                 throw LoqiDomainBuildException("Thought branches must have any identifier (for example, `_`) as expression")
             }
         }
+    }
+
+    private fun registerAlias(name: String, owner: DecisionTreeElement) {
+        if (name == "_") return
+        if (name !in aliases) {
+            aliases[name] = HashSet()
+        }
+        aliases[name]?.add(owner)
     }
 
     fun parseAggregationMethod(token: String): AggregationMethod {
@@ -788,8 +799,8 @@ class TreeLoqiBuilder(
             val thoughtBranch = visitThoughtBranch(it.thoughtBranch())
             Outcome(tuple, thoughtBranch.start).also { obj -> metaAliasForBranch(it, obj)}
         })
-        if (branches.size != questions.size) {
-            throw LoqiDomainBuildException("Branch size doesn't match with questions in TupleQuestionNode")
+        if (questions.size < 2) {
+            throw LoqiDomainBuildException("TupleQuestionNode must contain at least two question parts")
         }
         branches.forEach { checkResultReachability(it) }
         return TupleQuestionNode(questions, branches).withDebugLine(ctx.start.line)
@@ -800,10 +811,6 @@ class TreeLoqiBuilder(
     }
 
     override fun visitQuestion(ctx: LoqiGrammarParser.QuestionContext): QuestionNode {
-        if (!ctx.getTokens(TUPLE).isEmpty()) {
-            visitTupleQuestion(ctx);
-        }
-
         val expr = visitExp(ctx.exp(0));
         val branches = visitExpressionBranches(ctx.expBranches())
 
@@ -822,16 +829,7 @@ class TreeLoqiBuilder(
         val variable = visitAndGetTypedVar(ctx.typedVar());
         val expr = visitExp(ctx.exp());
 
-        val decls = ctx.treeVarDecls()?.treeVarDecl()?.map {
-            decl -> if (decl.exp() == null) {
-                throw LoqiDomainBuildException("Variable assignments must have value");
-            } else {
-                DecisionTreeVarAssignment(TypedVariable(
-                    decl.type().text,
-                    resolveDecisionTreeVarName(decl.id().getName()),
-                ), visitExp(decl.exp()))
-            }
-        } ?: emptyList()
+        val decls = ctx.treeVarDecls()?.treeVarDecl()?.map { visitTreeVarAssignment(it) } ?: emptyList()
 
         val branches = if (ctx.expBranches() == null) {
             BranchInfo(listOf(true), listOf(), Outcomes(mutableListOf(
@@ -853,7 +851,7 @@ class TreeLoqiBuilder(
         })
 
         return FindActionNode(DecisionTreeVarAssignment(variable, expr),
-            listOf(),decls, boolOutcomes).withDebugLine(ctx.start.line).also {
+            listOf(), decls, boolOutcomes).withDebugLine(ctx.start.line).also {
                 if (branches.out.isNotEmpty()) {
                     outMap[it] = branches.out.map { out -> out as Any }
                 } else if (!boolOutcomes.containsKey(true)) {
@@ -895,11 +893,13 @@ class TreeLoqiBuilder(
     }
 
     fun applyMetadataDecl(meta: LoqiGrammarParser.MetaDeclContext) {
-        val id : String = meta.id().text
+        val id = meta.id().getName()
         if (id in aliases) {
             for (node in aliases[id]!!) {
                 node.fillMetadata(meta.metadataSection())
             }
+        } else if (meta.metadataSection().metadataPropertyDecl().any { it.id().last().getName() == "condition" }) {
+            // FindErrorCategory metadata (meta for + condition) — not reconstructed into AST yet
         } else {
             throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
         }
@@ -930,6 +930,16 @@ class TreeLoqiBuilder(
     }
 
     /* -------- Helpers ----------*/
+
+    private fun visitTreeVarAssignment(decl: LoqiGrammarParser.TreeVarDeclContext): DecisionTreeVarAssignment {
+        if (decl.exp() == null) {
+            throw LoqiDomainBuildException("Variable assignments must have value")
+        }
+        return DecisionTreeVarAssignment(
+            TypedVariable(decl.type().text, resolveDecisionTreeVarName(decl.id().getName())),
+            visitExp(decl.exp()),
+        )
+    }
 
     private fun MetaOwner.fillMetadata(ctx: MetadataSectionContext?) {
         metadata.fill(ctx)
