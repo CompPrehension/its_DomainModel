@@ -1,7 +1,6 @@
 package its.model.definition.rdf
 
 import its.model.definition.*
-import its.model.definition.rdf.DomainRDFWriter.Option
 import its.model.definition.rdf.RDFUtils.XSD_PREF
 import its.model.definition.types.EnumValue
 import org.apache.jena.datatypes.xsd.XSDDatatype
@@ -69,7 +68,7 @@ class DomainRDFWriter private constructor(
     }
 
     private fun VariableDef.writeVariable() {
-        val varRdfProp = rdfModel.getProperty(basePrefix, "var...")
+        val varRdfProp = getBaseProperty("var...")
         findResource(valueObjectName).addProperty(varRdfProp, name, XSDDatatype.XSDstring)
     }
 
@@ -107,7 +106,7 @@ class DomainRDFWriter private constructor(
         return writeProperty(ownerResource, propertyName, value)
     }
     private fun writeProperty(ownerResource: Resource, propertyName: String, value: Any) {
-        val rdfProp = rdfModel.getProperty(basePrefix, propertyName)
+        val rdfProp = getBaseProperty(propertyName)
         when (value) {
             is Boolean, is String, is Int, is Double -> ownerResource.addLiteral(rdfProp, value)
             is EnumValue -> ownerResource.addProperty(rdfProp, findResource((value as EnumValue).valueName))
@@ -125,18 +124,18 @@ class DomainRDFWriter private constructor(
 
     private fun RelationshipLinkStatement.writeLink(ownerResource: Resource) {
         val relationship = this.relationship
-        val rdfProp = rdfModel.getProperty(basePrefix, relationshipName)
+        val rdfProp = getBaseProperty(relationshipName)
         if (this.relationship.isBinary) {
             val objRes = findResource(objectNames.first())
             ownerResource.addProperty(rdfProp, objRes)
         } else {
             val linkRes = getUniqueLinkResource(relationshipName)
             val subjRdfProp = if (hasOption(Option.NARY_RELATIONSHIPS_OLD_COMPAT)) rdfProp
-            else rdfModel.getProperty(basePrefix, "${relationshipName}_subj")
+            else getBaseProperty("${relationshipName}_subj")
             ownerResource.addProperty(subjRdfProp, linkRes)
             if (this.relationship.isUnordered) {
                 val objRdfProp = if (hasOption(Option.NARY_RELATIONSHIPS_OLD_COMPAT)) rdfProp
-                else rdfModel.getProperty(basePrefix, "${relationshipName}_obj")
+                else getBaseProperty("${relationshipName}_obj")
                 objectNames.forEach { objName ->
                     val objRes = findResource(objName)
                     linkRes.addProperty(objRdfProp, objRes)
@@ -144,7 +143,7 @@ class DomainRDFWriter private constructor(
             } else {
                 objectNames.forEachIndexed { i, objName ->
                     val objRdfProp = if (hasOption(Option.NARY_RELATIONSHIPS_OLD_COMPAT)) rdfProp
-                    else rdfModel.getProperty(basePrefix, "${relationshipName}_obj_$i")
+                    else getBaseProperty("${relationshipName}_obj_$i")
                     val objRes = findResource(objName)
                     linkRes.addProperty(objRdfProp, objRes)
                 }
@@ -163,6 +162,9 @@ class DomainRDFWriter private constructor(
     }
 
     private fun findResource(name: String): Resource {
-        return rdfModel.getResource(basePrefix + name)
+        return rdfModel.getResource(basePrefix + RDFUtils.encodeIriLocalName(name))
     }
+
+    private fun getBaseProperty(name: String) =
+        rdfModel.getProperty(basePrefix, RDFUtils.encodeIriLocalName(name))
 }

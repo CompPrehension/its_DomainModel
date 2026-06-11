@@ -3,6 +3,7 @@ package its.model.definition.rdf
 import its.model.Utils.permutations
 import its.model.definition.*
 import its.model.definition.build.DomainBuilderUtils
+import its.model.definition.rdf.DomainRDFFiller.Companion.fillDomain
 import its.model.definition.rdf.RDFUtils.POAS_PREF
 import its.model.definition.rdf.RDFUtils.RDFS_PREF
 import its.model.definition.rdf.RDFUtils.RDF_PREF
@@ -102,7 +103,7 @@ class DomainRDFFiller private constructor(
     private fun fillClass(clazz: ClassDef, resource: Resource) {
         val usedRdfProperties = mutableSetOf<Property>()
         for (property in clazz.allProperties) {
-            val rdfProperty = rdfModel.getProperty(basePrefix, property.name)!!
+            val rdfProperty = getBaseProperty(property.name)
             val rdfStatement = resource.getProperty(rdfProperty) ?: continue
             val value = rdfStatement.`object`.asPropertyValue(property.type)
             clazz.definedPropertyValues.add(
@@ -136,7 +137,7 @@ class DomainRDFFiller private constructor(
     private fun fillObject(obj: ObjectDef, resource: Resource) {
         val usedRdfProperties = mutableSetOf<Property>()
         for (property in obj.clazz.allProperties) {
-            val rdfProperty = rdfModel.getProperty(basePrefix, property.name)!!
+            val rdfProperty = getBaseProperty(property.name)
             val rdfStatement = resource.getProperty(rdfProperty) ?: continue
             val value = rdfStatement.`object`.asPropertyValue(property.type)
             obj.definedPropertyValues.add(ObjectPropertyValueStatement(obj, property.name, ParamsValues.EMPTY, value))
@@ -145,7 +146,7 @@ class DomainRDFFiller private constructor(
 
         for (relationship in obj.clazz.allRelationships) {
             if (relationship.isBinary || hasOption(Option.NARY_RELATIONSHIPS_OLD_COMPAT)) {
-                val rdfProperty = rdfModel.getProperty(basePrefix, relationship.name)
+                val rdfProperty = getBaseProperty(relationship.name)
                 for (rdfStatement in resource.listProperties(rdfProperty)) {
                     val linkResource = rdfStatement.`object`.asResource()
 
@@ -177,17 +178,17 @@ class DomainRDFFiller private constructor(
                 }
                 usedRdfProperties.add(rdfProperty)
             } else {
-                val subjRdfProp = rdfModel.getProperty(basePrefix, "${relationship.name}_subj")
+                val subjRdfProp = getBaseProperty("${relationship.name}_subj")
                 for (rdfStatement in resource.listProperties(subjRdfProp)) {
                     val linkResource = rdfStatement.`object`.asResource()
                     val objNames =
                         if (relationship.isUnordered) {
-                            val objRdfProp = rdfModel.getProperty(basePrefix, "${relationship.name}_obj")
+                            val objRdfProp = getBaseProperty("${relationship.name}_obj")
                             linkResource.listProperties(objRdfProp).toList()
                                 .map { it.`object`.asResource().name }
                         } else {
                             relationship.objectClassNames.mapIndexed { i, _ ->
-                                val objRdfProp = rdfModel.getProperty(basePrefix, "${relationship.name}_obj_$i")
+                                val objRdfProp = getBaseProperty("${relationship.name}_obj_$i")
                                 linkResource.getProperty(objRdfProp).`object`?.asResource()?.name
                             }.filterNotNull()
                         }
@@ -254,7 +255,7 @@ class DomainRDFFiller private constructor(
         get() = rdfModel.getProperty(rdfsPrefix, "label")
 
     private val varRdfProp
-        get() = rdfModel.getProperty(basePrefix, "var...")
+        get() = getBaseProperty("var...")
 
     private val typeRdfProp
         get() = rdfModel.getProperty(rdfPrefix, "type")
@@ -268,7 +269,10 @@ class DomainRDFFiller private constructor(
     }
 
     private fun findRdfResource(name: String): Resource? {
-        val res = rdfModel.getResource(basePrefix + name)!!
+        val res = rdfModel.getResource(basePrefix + RDFUtils.encodeIriLocalName(name))!!
         return if (rdfModel.containsResource(res)) res else null
     }
+
+    private fun getBaseProperty(name: String) =
+        rdfModel.getProperty(basePrefix, RDFUtils.encodeIriLocalName(name))
 }
