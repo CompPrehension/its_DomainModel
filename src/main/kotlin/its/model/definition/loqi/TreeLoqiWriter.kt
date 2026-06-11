@@ -6,6 +6,8 @@ import its.model.definition.MetaData
 import its.model.definition.MetaOwner
 import its.model.definition.MetadataPropertyValue
 import its.model.definition.loqi.LoqiStringUtils.toLoqiName
+import its.model.definition.types.Clazz
+import its.model.definition.types.Obj
 import its.model.expressions.Operator
 import its.model.nodes.*
 import its.model.nodes.visitors.DecisionTreeBehaviour
@@ -338,7 +340,18 @@ class TreeLoqiWriter private constructor(
     override fun processTupleQuestionNode(node: TupleQuestionNode) {
         queueNodeMeta(node)
         writer.write("ask tuple ( ")
-        writer.write(node.parts.joinToString("; ") { it.expr.loqiCompact() })
+        writer.write(node.parts.joinToString("; ") { part ->
+            buildString {
+                append(part.expr.loqiCompact())
+                if (part.possibleOutcomes.isNotEmpty()) {
+                    append(" with [")
+                    append(part.possibleOutcomes.joinToString(", ") { outcome ->
+                        formatValue(outcome.value)
+                    })
+                    append("]")
+                }
+            }
+        })
         writer.writeln(" ) {")
         writer.indent()
         for (outcome in node.outcomes) {
@@ -491,6 +504,17 @@ class TreeLoqiWriter private constructor(
         else -> toString()
     }
 
+    private fun formatValue(value: Any): String = when (value) {
+        is BranchResult -> formatBranchResult(value)
+        is Boolean -> if (value) "true" else "false"
+        is String -> value.toLoqiStringLiteral()
+        is Number -> value.toString()
+        is EnumValueRef -> "${value.enumName.toLoqiName()}:${value.valueName.toLoqiName()}"
+        is Clazz -> "class:${value.className.toLoqiName()}"
+        is Obj -> "obj:${value.objectName.toLoqiName()}"
+        else -> value.toString()
+    }
+
     private fun formatBranchResult(result: BranchResult): String = when (result) {
         BranchResult.CORRECT -> "correct"
         BranchResult.ERROR -> "error"
@@ -499,22 +523,15 @@ class TreeLoqiWriter private constructor(
 
     private fun formatOutcomeKey(key: Any): String = when (key) {
         is BranchResult -> formatBranchResult(key)
-        is Boolean -> if (key) "true" else "false"
         is ValueTuple -> formatTupleKey(key)
-        is String -> key.toLoqiStringLiteral()
-        is Number -> key.toString()
-        is EnumValueRef -> "${key.enumName.toLoqiName()}:${key.valueName.toLoqiName()}"
-        else -> key.toString()
+        else -> formatValue(key)
     }
 
     private fun formatTupleKey(tuple: ValueTuple): String {
         return "(" + tuple.joinToString("; ") { el ->
             when (el) {
                 null -> "*"
-                is Boolean -> if (el) "true" else "false"
-                is String -> el.toLoqiStringLiteral()
-                is EnumValueRef -> "${el.enumName.toLoqiName()}:${el.valueName.toLoqiName()}"
-                else -> el.toString()
+                else -> formatValue(el)
             }
         } + ")"
     }

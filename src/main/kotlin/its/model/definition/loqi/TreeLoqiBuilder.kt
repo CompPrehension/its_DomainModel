@@ -791,9 +791,7 @@ class TreeLoqiBuilder(
     }
 
     fun visitTupleQuestion(ctx: LoqiGrammarParser.QuestionContext): TupleQuestionNode {
-        val questions: List<TupleQuestionNode.TupleQuestionPart> = ctx.exp().map {
-            TupleQuestionNode.TupleQuestionPart(visitExp(it), listOf())
-        }
+        val questions = ctx.tupleQuestionPart().map { buildTupleQuestionPart(it) }
         val branches = Outcomes(ctx.tupleBranch().map {
             val tuple = parseTuple(it.tuple())
             val thoughtBranch = visitThoughtBranch(it.thoughtBranch())
@@ -804,6 +802,20 @@ class TreeLoqiBuilder(
         }
         branches.forEach { checkResultReachability(it) }
         return TupleQuestionNode(questions, branches).withDebugLine(ctx.start.line)
+    }
+
+    private fun buildTupleQuestionPart(ctx: LoqiGrammarParser.TupleQuestionPartContext): TupleQuestionNode.TupleQuestionPart {
+        val outcomes = ctx.tupleQuestionOutcomeList()?.tupleQuestionOutcomeValue()?.map { outcomeCtx ->
+            TupleQuestionNode.TupleQuestionOutcome(parseTupleQuestionOutcomeValue(outcomeCtx))
+        } ?: emptyList()
+        return TupleQuestionNode.TupleQuestionPart(visitExp(ctx.exp()), outcomes)
+    }
+
+    private fun parseTupleQuestionOutcomeValue(ctx: LoqiGrammarParser.TupleQuestionOutcomeValueContext): Any {
+        ctx.value()?.let { return it.getTypeAndValue().value }
+        if (ctx.CLASS() != null) return Clazz(ctx.id().getName())
+        if (ctx.OBJ() != null) return Obj(ctx.id().getName())
+        return parseBranchResult(ctx.text)
     }
 
     fun parseTuple(ctx: LoqiGrammarParser.TupleContext): ValueTuple {

@@ -253,8 +253,20 @@ findErrorCategory: INTEGER ':' type (AS id)? arrow exp;
 question: ASK '(' exp ')' expBranches
         | ASK SWITCH '(' exp ')' expBranches
         | ASK '(' exp ')' WITH TRIVIAL '[' exp ']' expBranches
-        | ASK TUPLE '(' exp (';' exp)* ')' '{' tupleBranch* '}'
+        | ASK TUPLE '(' tupleQuestionPart (';' tupleQuestionPart)* ';'? ')' '{' tupleBranch* '}'
         ;
+
+tupleQuestionPart: exp (WITH '[' tupleQuestionOutcomeList ']')?;
+
+tupleQuestionOutcomeList: tupleQuestionOutcomeValue (',' tupleQuestionOutcomeValue)* ','?;
+
+tupleQuestionOutcomeValue: value
+                      | CLASS ':' id
+                      | OBJ ':' id
+                      | CORRECT
+                      | ERROR
+                      | NULL
+                      ;
 
 tuple: '(' exp (';' exp)* ';'? ')';
 
