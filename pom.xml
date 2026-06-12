@@ -50,16 +50,15 @@
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
                 <version>2.3.21</version>
-                <configuration>
-                    <sourceDirs>
-                        <sourceDir>src/main/kotlin</sourceDir>
-                        <sourceDir>gen</sourceDir>
-                    </sourceDirs>
-                </configuration>
                 <executions>
                     <execution>
                         <id>compile</id>
                         <phase>compile</phase>
+                        <configuration>
+                            <sourceDirs>
+                                <sourceDir>gen</sourceDir>
+                            </sourceDirs>
+                        </configuration>
                         <goals>
                             <goal>compile</goal>
                         </goals>
