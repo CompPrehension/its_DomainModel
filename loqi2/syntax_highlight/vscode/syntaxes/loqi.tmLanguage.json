@@ -351,6 +351,18 @@
           }
         },
         {
+          "name": "meta.declaration.lambda.loqi",
+          "match": "\\b(lambda)\\s+(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.lambda.loqi"
+            },
+            "2": {
+              "name": "entity.name.function.lambda.loqi"
+            }
+          }
+        },
+        {
           "name": "meta.declaration.variable.loqi",
           "match": "\\b(var)\\s+(`[^`\\s]+`|[A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?::|=|,|with|$))",
           "captures": {
@@ -496,7 +508,7 @@
         },
         {
           "name": "keyword.declaration.loqi",
-          "match": "\\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var|fragment)\\b"
+          "match": "\\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var|fragment|lambda)\\b"
         },
         {
           "name": "keyword.operator.word.loqi",

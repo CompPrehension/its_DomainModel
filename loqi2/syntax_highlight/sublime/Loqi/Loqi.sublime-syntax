@@ -118,6 +118,10 @@ contexts:
       captures:
         1: keyword.declaration.fragment.loqi
         2: entity.name.function.fragment.loqi
+    - match: '\b(lambda)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)'
+      captures:
+        1: keyword.declaration.lambda.loqi
+        2: entity.name.function.lambda.loqi
     - match: '\b(var)\s+(`[^`\s]+`|[A-Za-z_][A-Za-z0-9_]*)(?=\s*(?::|=|,|with|$))'
       captures:
         1: keyword.declaration.variable.loqi
@@ -170,7 +174,7 @@ contexts:
       scope: keyword.control.expression.loqi
     - match: '\b(?:while|cycle|agg|ask|switch|trivial|tuple|conclude|out|merge)\b'
       scope: keyword.control.tree.loqi
-    - match: '\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var|fragment)\b'
+    - match: '\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var|fragment|lambda)\b'
       scope: keyword.declaration.loqi
     - match: '\b(?:and|or|not|is|to|compare)\b'
       scope: keyword.operator.word.loqi
