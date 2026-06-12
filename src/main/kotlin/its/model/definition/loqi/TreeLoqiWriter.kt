@@ -361,7 +361,7 @@ class TreeLoqiWriter private constructor(
             writer.indent()
             writeSubtree(outcome.node)
             writer.unindent()
-            writer.writeln("};")
+            writer.writeln("}")
         }
         writer.unindent()
         writer.write("}")

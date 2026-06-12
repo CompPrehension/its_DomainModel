@@ -40,6 +40,7 @@ class TreeLoqiBuilder(
      */
     private val fragmentInliningStack = ArrayDeque<FragmentInliningContext>()
     private val fragmentCallStack = ArrayDeque<String>()
+    private val statementContinuationStack = ArrayDeque<List<StmtContext>>()
 
     // TODO: needs more refactoring, more debugging
 
@@ -187,71 +188,120 @@ class TreeLoqiBuilder(
         ctx: LoqiGrammarParser.ThoughtBranchContext,
         leaveTailOpen: Boolean = false,
     ): BuiltThoughtBranch {
-        if (ctx.stmts().stmt().isEmpty()) {
-            throw LoqiDomainBuildException(ctx.stmts().start.line, "Thought branch is empty")
-        }
-        val stmts = ctx.stmts().stmt();
-        val first = buildStmt(stmts[0])
-        var prev = first
-        for (i in 1 until stmts.size) {
-            val newStmt = buildStmt(stmts[i]);
-            domainOpAt(stmts[i].start.line) {
-                connectToNextStatement(prev, newStmt.start)
-            }
-            prev = newStmt;
-        }
-
-        if (!leaveTailOpen) {
-            domainOpAt(ctx.stop?.line ?: ctx.start.line) {
-                closeOutRedirect(prev)
-            }
-        }
+        val sequence = buildStatementSequence(
+            ctx.stmts().stmt(),
+            currentStatementContinuation(),
+            closeTail = !leaveTailOpen,
+            emptyLine = ctx.stmts().start.line,
+            closeLine = ctx.stop?.line ?: ctx.start.line,
+        )
         return BuiltThoughtBranch(
-            ThoughtBranch(first.start).also {
+            ThoughtBranch(sequence.start).also {
                 domainOpAt(ctx.start.line) {
                     checkResultReachability(it)
                 }
             },
-            prev.tail
+            sequence.tail
         )
     }
 
     override fun visitStmt(ctx: LoqiGrammarParser.StmtContext): DecisionTreeNode {
-        return buildStmt(ctx).start
+        return buildStmt(ctx, currentStatementContinuation()).start
     }
 
-    private fun buildStmt(ctx: LoqiGrammarParser.StmtContext): BuiltStatement {
-        val child = ctx.getChild(0)
+    private fun buildStatementSequence(
+        stmts: List<StmtContext>,
+        inheritedContinuation: List<StmtContext>,
+        closeTail: Boolean,
+        emptyLine: Int,
+        closeLine: Int,
+    ): BuiltStatement {
+        if (stmts.isEmpty()) {
+            throw LoqiDomainBuildException(emptyLine, "Thought branch is empty")
+        }
 
-        val result = if (child is LoqiGrammarParser.ConcludeBranchResultContext) {
-            domainOpAt(ctx.start.line) { visitConcludeBranchResult(child).asBuiltStatement() }
-        } else if (child is LoqiGrammarParser.BranchAggregationContext) {
-            domainOpAt(ctx.start.line) { visitBranchAggregation(child).asBuiltStatement() }
-        } else if (child is LoqiGrammarParser.CycleAggregationContext) {
-            domainOpAt(ctx.start.line) { visitCycleAggregation(child).asBuiltStatement() }
-        } else if (child is LoqiGrammarParser.WhileCycleContext) {
-            domainOpAt(ctx.start.line) { visitWhileCycle(child).asBuiltStatement() }
-        } else if (child is LoqiGrammarParser.FindActionContext) {
-            domainOpAt(ctx.start.line) { visitFindAction(child).asBuiltStatement() }
-        } else if (child is LoqiGrammarParser.QuestionContext) {
-            domainOpAt(ctx.start.line) {
-                val node = if (!child.getTokens(LoqiGrammarParser.TUPLE).isEmpty()) {
-                    visitTupleQuestion(child)
-                } else {
-                    visitQuestion(child)
-                }
-                node.asBuiltStatement()
+        val first = buildStmt(stmts[0], stmts.drop(1) + inheritedContinuation)
+        if (stmts[0].mergeStmt() != null) {
+            return first
+        }
+        var prev = first
+        for (i in 1 until stmts.size) {
+            val newStmt = buildStmt(stmts[i], stmts.drop(i + 1) + inheritedContinuation)
+            domainOpAt(stmts[i].start.line) {
+                connectToNextStatement(prev, newStmt.start)
             }
-        } else if (child is LoqiGrammarParser.CallStmtContext) {
-            domainOpAt(ctx.start.line) { visitCallStmtAsBuiltStatement(child) }
-        } else {
-            throw ThisShouldNotHappen()
+            prev = newStmt
+            if (stmts[i].mergeStmt() != null) {
+                break
+            }
         }
 
-        if (ctx.AS() != null && ctx.id() != null) {
-            registerAlias(ctx.id().getName(), result.start)
+        if (closeTail) {
+            domainOpAt(closeLine) {
+                closeOutRedirect(prev)
+            }
         }
-        return result
+        return prev.let { BuiltStatement(first.start, it.tail, it.openFragmentExits) }
+    }
+
+    private fun currentStatementContinuation(): List<StmtContext> {
+        return statementContinuationStack.lastOrNull() ?: emptyList()
+    }
+
+    private fun buildStmt(ctx: LoqiGrammarParser.StmtContext, continuationAfterStmt: List<StmtContext>): BuiltStatement {
+        val child = ctx.getChild(0)
+        statementContinuationStack.addLast(continuationAfterStmt)
+        try {
+            val result = if (child is LoqiGrammarParser.ConcludeBranchResultContext) {
+                domainOpAt(ctx.start.line) { visitConcludeBranchResult(child).asBuiltStatement() }
+            } else if (child is LoqiGrammarParser.BranchAggregationContext) {
+                domainOpAt(ctx.start.line) { visitBranchAggregation(child).asBuiltStatement() }
+            } else if (child is LoqiGrammarParser.CycleAggregationContext) {
+                domainOpAt(ctx.start.line) { visitCycleAggregation(child).asBuiltStatement() }
+            } else if (child is LoqiGrammarParser.WhileCycleContext) {
+                domainOpAt(ctx.start.line) { visitWhileCycle(child).asBuiltStatement() }
+            } else if (child is LoqiGrammarParser.FindActionContext) {
+                domainOpAt(ctx.start.line) { visitFindAction(child).asBuiltStatement() }
+            } else if (child is LoqiGrammarParser.QuestionContext) {
+                domainOpAt(ctx.start.line) {
+                    val node = if (!child.getTokens(LoqiGrammarParser.TUPLE).isEmpty()) {
+                        visitTupleQuestion(child)
+                    } else {
+                        visitQuestion(child)
+                    }
+                    node.asBuiltStatement()
+                }
+            } else if (child is LoqiGrammarParser.CallStmtContext) {
+                domainOpAt(ctx.start.line) { visitCallStmtAsBuiltStatement(child) }
+            } else if (child is LoqiGrammarParser.MergeStmtContext) {
+                domainOpAt(ctx.start.line) { visitMergeStmtAsBuiltStatement(child, continuationAfterStmt) }
+            } else {
+                throw ThisShouldNotHappen()
+            }
+
+            if (ctx.AS() != null && ctx.id() != null) {
+                registerAlias(ctx.id().getName(), result.start)
+            }
+            return result
+        } finally {
+            statementContinuationStack.removeLast()
+        }
+    }
+
+    private fun visitMergeStmtAsBuiltStatement(
+        ctx: LoqiGrammarParser.MergeStmtContext,
+        continuationAfterStmt: List<StmtContext>,
+    ): BuiltStatement {
+        if (continuationAfterStmt.isEmpty()) {
+            throw LoqiDomainBuildException(ctx.start.line, "Merge statement has no continuation to merge")
+        }
+        return buildStatementSequence(
+            continuationAfterStmt,
+            inheritedContinuation = emptyList(),
+            closeTail = true,
+            emptyLine = ctx.start.line,
+            closeLine = continuationAfterStmt.last().stop?.line ?: ctx.start.line,
+        )
     }
 
     private fun DecisionTreeNode.asBuiltStatement(): BuiltStatement {

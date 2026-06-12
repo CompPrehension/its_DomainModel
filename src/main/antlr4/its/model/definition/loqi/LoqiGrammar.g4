@@ -223,7 +223,10 @@ stmt: concludeBranchResult
     | findAction (AS id)?
     | question (AS id)?
     | callStmt
+    | mergeStmt
     ;
+
+mergeStmt: MERGE;
 
 whileCycle: WHILE '(' exp ')' aggBranches;
 
@@ -405,9 +408,10 @@ NULL : 'null' ;
 
 HYP: 'hyp' ;
 MUTEX: 'mutex' ;
-OUT: 'out';
 
+OUT: 'out';
 FRAGMENT: 'fragment';
+MERGE: 'merge';
 
 CONCLUDE : 'conclude';
 CORRECT : 'correct' ;
