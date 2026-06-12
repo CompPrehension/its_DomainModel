@@ -2,7 +2,7 @@
   "name": "loqi-syntax",
   "displayName": "Loqi Language Support",
   "description": "Syntax highlighting, bracket matching, indentation, and folding for Loqi and TPG files.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "publisher": "local",
   "engines": {
     "vscode": "^1.85.0"

@@ -492,7 +492,7 @@
         },
         {
           "name": "keyword.control.tree.loqi",
-          "match": "\\b(?:while|cycle|agg|ask|switch|trivial|tuple|conclude|out)\\b"
+          "match": "\\b(?:while|cycle|agg|ask|switch|trivial|tuple|conclude|out|merge)\\b"
         },
         {
           "name": "keyword.declaration.loqi",

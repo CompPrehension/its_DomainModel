@@ -168,7 +168,7 @@ contexts:
   keywords:
     - match: '\b(?:if|else|find|findExtreme|forAny|forAll|among|with|as)\b'
       scope: keyword.control.expression.loqi
-    - match: '\b(?:while|cycle|agg|ask|switch|trivial|tuple|conclude|out)\b'
+    - match: '\b(?:while|cycle|agg|ask|switch|trivial|tuple|conclude|out|merge)\b'
       scope: keyword.control.tree.loqi
     - match: '\b(?:class|obj|enum|prop|rel|tpg|values|meta|for|var|fragment)\b'
       scope: keyword.declaration.loqi
