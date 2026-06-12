@@ -8,7 +8,6 @@ import its.model.definition.MetaOwner
 import its.model.definition.types.Type
 import its.model.expressions.ExpressionContext
 import its.model.expressions.Operator
-import java.util.*
 import kotlin.properties.Delegates
 
 /**
@@ -61,7 +60,18 @@ sealed class DecisionTreeElement : MetaOwner, Describable {
             return className + descr
         }
 
-    override fun toString() = description
+    override fun toString(): String {
+        val className = this::class.simpleName ?: "DecisionTreeElement"
+        val metaParts = listOfNotNull(
+            metadata["id"]?.let { "id=$it" },
+            metadata["line"]?.let { "line=$it" },
+        )
+        return if (metaParts.isEmpty()) {
+            className
+        } else {
+            "$className (${metaParts.joinToString(", ")})"
+        }
+    }
 
     /**
      * Валидация - провалидировать дерево решений (с учетом контекста [context]) и положить все потенциальные ошибки в [results]
