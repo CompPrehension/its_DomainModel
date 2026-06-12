@@ -6,6 +6,7 @@ import its.model.definition.*
 import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
 import its.model.definition.loqi.tree.FragmentDef
+import its.model.definition.loqi.tree.LambdaDef
 import its.model.definition.procedures.*
 import its.model.definition.types.*
 import its.model.expressions.Operator
@@ -32,6 +33,7 @@ class TreeLoqiBuilder(
     private val outMap: MutableMap<DecisionTreeElement, List<Any>> = mutableMapOf()
     private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
     private val fragments: MutableMap<String, RegisteredFragment> = mutableMapOf()
+    private val lambdas: MutableMap<String, RegisteredLambda> = mutableMapOf()
 
     /*
      * Встраивание фрагментов должно быть рекурсивно, но рекурсивные вызовы
@@ -141,7 +143,13 @@ class TreeLoqiBuilder(
     }
 
     private fun visitExp(ctx: LoqiGrammarParser.ExpContext): Operator {
-        return ctx.accept(OperatorLoqiBuilder(procedureRegistry, currentDecisionTreeVarNameResolver()))
+        return ctx.accept(
+            OperatorLoqiBuilder(
+                procedureRegistry,
+                currentDecisionTreeVarNameResolver(),
+                lambdas,
+            )
+        )
     }
 
     private fun Operator.unwrap(): Any {
@@ -938,6 +946,7 @@ class TreeLoqiBuilder(
     override fun visitFullTreeDecl(ctx: LoqiGrammarParser.FullTreeDeclContext): DecisionTree {
         ctx.treeDeclHelpers().forEach { helper ->
             helper.fragmentDef()?.let { registerFragment(it) }
+            helper.lambdaDef()?.let { registerLambda(it) }
         }
 
         val tree = visitTreeDecl(ctx.treeDecl());
@@ -1090,6 +1099,25 @@ class TreeLoqiBuilder(
         fragments[name] = RegisteredFragment(
             FragmentDef(name, arguments),
             ctx.thoughtBranch()
+        )
+    }
+
+    private fun registerLambda(ctx: LambdaDefContext) {
+        val name = ctx.id().getName()
+        if (lambdas.containsKey(name)) {
+            throw LoqiDomainBuildException(ctx.start.line, "Lambda `$name` is already declared")
+        }
+
+        val arguments = ctx.treeVarDecls()?.treeVarDecl()?.map { arg ->
+            if (arg.exp() != null) {
+                throw LoqiDomainBuildException(arg.start.line, "Lambda argument `${arg.id().getName()}` cannot have an initializer")
+            }
+            ProcedureArgument(arg.id().getName(), arg.type().getType())
+        } ?: emptyList()
+
+        lambdas[name] = RegisteredLambda(
+            LambdaDef(name, arguments),
+            ctx.exp()
         )
     }
 

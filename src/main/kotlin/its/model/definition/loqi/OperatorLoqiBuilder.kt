@@ -9,6 +9,7 @@ import its.model.definition.loqi.LoqiStringUtils.extractEscapes
 import its.model.definition.loqi.OperatorLoqiBuilder.Companion.buildExp
 import its.model.definition.procedures.BuiltinProcedureRegistry
 import its.model.definition.procedures.CallableProcedureDef
+import its.model.definition.procedures.ProcedureNamespaces
 import its.model.definition.procedures.ProcedureRegistry
 import its.model.expressions.Operator
 import its.model.expressions.literals.*
@@ -22,6 +23,7 @@ import org.antlr.v4.runtime.tree.ParseTree
 import org.antlr.v4.runtime.tree.TerminalNode
 import java.io.Reader
 import java.io.StringReader
+import java.util.*
 
 /**
  * Построение дерева выражений [Operator] на основе текстовой записи
@@ -29,7 +31,15 @@ import java.io.StringReader
 class OperatorLoqiBuilder(
     private val procedureRegistry: ProcedureRegistry = BuiltinProcedureRegistry,
     private val decisionTreeVarNameResolver: DecisionTreeVarNameResolver = DecisionTreeVarNameResolver.IDENTITY,
+    private val lambdas: Map<String, RegisteredLambda> = emptyMap(),
 ) : LoqiGrammarBaseVisitor<Operator>() {
+
+    private data class LambdaInliningContext(
+        val arguments: Map<String, Operator>,
+    )
+
+    private val lambdaInliningStack = ArrayDeque<LambdaInliningContext>()
+    private val lambdaCallStack = ArrayDeque<String>()
 
     companion object {
         /**
@@ -240,7 +250,15 @@ class OperatorLoqiBuilder(
     }
 
     override fun visitTreeVar(ctx: LoqiGrammarParser.TreeVarContext): Operator {
-        return DecisionTreeVarLiteral(decisionTreeVarNameResolver.resolve(ctx.ID().getName()))
+        val name = ctx.ID().getName()
+        val iterator = lambdaInliningStack.descendingIterator()
+        while (iterator.hasNext()) {
+            val replacement = iterator.next().arguments[name]
+            if (replacement != null) {
+                return replacement
+            }
+        }
+        return DecisionTreeVarLiteral(decisionTreeVarNameResolver.resolve(name))
     }
 
     override fun visitCompareExp(ctx: LoqiGrammarParser.CompareExpContext): Operator {
@@ -317,10 +335,56 @@ class OperatorLoqiBuilder(
     }
 
     override fun visitCallExpr(ctx: LoqiGrammarParser.CallExprContext): Operator {
+        val args = ctx.callArgs()?.exp()?.map { visit(it) } ?: emptyList()
+        resolveLambda(ctx.namespaceResolution(), args.size)?.let { lambda ->
+            return inlineLambda(lambda, args, ctx)
+        }
         val procedure = resolveCallProcedure(ctx.namespaceResolution())
             ?: throw DomainUseException("Procedure `${ctx.namespaceResolution().text}` not found")
-        val args = ctx.callArgs()?.exp()?.map { visit(it) } ?: emptyList()
         return CallProcedure(procedure, args)
+    }
+
+    private fun resolveLambda(
+        ctx: LoqiGrammarParser.NamespaceResolutionContext,
+        arity: Int,
+    ): RegisteredLambda? {
+        val parts = ctx.ID().map { it.getName() }
+        if (parts.isEmpty()) {
+            return null
+        }
+
+        val lambda = when {
+            parts.size == 1 -> lambdas[parts[0]]
+            parts.dropLast(1) == ProcedureNamespaces.LAMBDA.getScopeParts() -> lambdas[parts.last()]
+            else -> null
+        } ?: return null
+
+        return lambda.takeIf { it.definition.arguments.size == arity }
+    }
+
+    private fun inlineLambda(
+        lambda: RegisteredLambda,
+        actualArguments: List<Operator>,
+        callCtx: LoqiGrammarParser.CallExprContext,
+    ): Operator {
+        val lambdaName = lambda.definition.qualifiedName
+        if (lambdaName in lambdaCallStack) {
+            val cycle = (lambdaCallStack + lambdaName).joinToString(" -> ")
+            throw LoqiDomainBuildException(callCtx.start.line, "Recursive lambda expansion detected: $cycle")
+        }
+
+        val variableMapping = lambda.definition.arguments.zip(actualArguments).associate { (formal, actual) ->
+            formal.name to actual
+        }
+
+        lambdaCallStack.addLast(lambdaName)
+        lambdaInliningStack.addLast(LambdaInliningContext(variableMapping))
+        try {
+            return visit(lambda.body)
+        } finally {
+            lambdaInliningStack.removeLast()
+            lambdaCallStack.removeLast()
+        }
     }
 
     private fun resolveCallProcedure(ctx: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {

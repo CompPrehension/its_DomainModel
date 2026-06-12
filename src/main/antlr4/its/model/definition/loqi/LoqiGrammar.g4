@@ -4,6 +4,7 @@ fullTreeDecl: treeDeclHelpers* treeDecl treeDeclHelpers* EOF;
 
 treeDeclHelpers: metaDecl
                | fragmentDef
+               | lambdaDef
                ;
 
 fullExp : exp EOF;
@@ -326,6 +327,8 @@ metaDecl: META FOR id metadataSection;
 
 fragmentDef: FRAGMENT id '(' treeVarDecls? ')' thoughtBranch;
 
+lambdaDef: LAMBDA id '(' treeVarDecls? ')' '=' exp;
+
 //-------------ЛЕКСЕР---------------
 
 //Литералы
@@ -411,6 +414,7 @@ MUTEX: 'mutex' ;
 
 OUT: 'out';
 FRAGMENT: 'fragment';
+LAMBDA: 'lambda';
 MERGE: 'merge';
 
 CONCLUDE : 'conclude';
