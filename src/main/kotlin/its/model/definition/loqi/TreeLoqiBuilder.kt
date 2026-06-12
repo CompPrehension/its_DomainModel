@@ -863,10 +863,14 @@ class TreeLoqiBuilder(
     }
 
     private fun buildTupleQuestionPart(ctx: LoqiGrammarParser.TupleQuestionPartContext): TupleQuestionNode.TupleQuestionPart {
-        val outcomes = ctx.tupleQuestionOutcomeList()?.tupleQuestionOutcomeValue()?.map { outcomeCtx ->
-            TupleQuestionNode.TupleQuestionOutcome(parseTupleQuestionOutcomeValue(outcomeCtx))
+        val outcomes = ctx.tupleQuestionOutcomeList()?.tupleQuestionOutcome()?.map { outcomeCtx ->
+            TupleQuestionNode.TupleQuestionOutcome(parseTupleQuestionOutcomeValue(outcomeCtx.tupleQuestionOutcomeValue())).also { outcome ->
+                outcomeCtx.id()?.let { registerAlias(it.getName(), outcome) }
+            }
         } ?: emptyList()
-        return TupleQuestionNode.TupleQuestionPart(visitExp(ctx.exp()), outcomes)
+        return TupleQuestionNode.TupleQuestionPart(visitExp(ctx.exp()), outcomes).also { part ->
+            ctx.id()?.let { registerAlias(it.getName(), part) }
+        }
     }
 
     private fun parseTupleQuestionOutcomeValue(ctx: LoqiGrammarParser.TupleQuestionOutcomeValueContext): Any {

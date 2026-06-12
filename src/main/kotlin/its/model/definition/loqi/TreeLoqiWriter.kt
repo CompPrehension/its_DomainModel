@@ -341,15 +341,21 @@ class TreeLoqiWriter private constructor(
         queueNodeMeta(node)
         writer.write("ask tuple ( ")
         writer.write(node.parts.joinToString("; ") { part ->
+            queueNodeMeta(part)
             buildString {
                 append(part.expr.loqiCompact())
                 if (part.possibleOutcomes.isNotEmpty()) {
                     append(" with [")
                     append(part.possibleOutcomes.joinToString(", ") { outcome ->
-                        formatValue(outcome.value)
+                        queueNodeMeta(outcome)
+                        buildString {
+                            append(formatValue(outcome.value))
+                            outcome.metadata.loqiLinkAlias()?.let { append(" as ${it.toLoqiName()}") }
+                        }
                     })
                     append("]")
                 }
+                part.metadata.loqiLinkAlias()?.let { append(" as ${it.toLoqiName()}") }
             }
         })
         writer.writeln(" ) {")

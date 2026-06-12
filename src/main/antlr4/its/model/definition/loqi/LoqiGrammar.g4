@@ -260,9 +260,11 @@ question: ASK '(' exp ')' expBranches
         | ASK TUPLE '(' tupleQuestionPart (';' tupleQuestionPart)* ';'? ')' '{' tupleBranch* '}'
         ;
 
-tupleQuestionPart: exp (WITH '[' tupleQuestionOutcomeList ']')?;
+tupleQuestionPart: exp (WITH '[' tupleQuestionOutcomeList ']')? (AS id)?;
 
-tupleQuestionOutcomeList: tupleQuestionOutcomeValue (',' tupleQuestionOutcomeValue)* ','?;
+tupleQuestionOutcomeList: tupleQuestionOutcome (',' tupleQuestionOutcome)* ','?;
+
+tupleQuestionOutcome: tupleQuestionOutcomeValue (AS id)?;
 
 tupleQuestionOutcomeValue: value
                       | CLASS ':' id
