@@ -1,5 +1,7 @@
+import its.model.DirectoryScanUtils
 import its.model.DomainSolvingModel
 import its.model.definition.DomainModel
+import its.model.definition.compat.DomainDictionariesRDFBuilder
 import its.model.definition.loqi.*
 import its.model.definition.rdf.DomainRDFFiller
 import its.model.definition.rdf.DomainRDFWriter
@@ -12,9 +14,13 @@ import picocli.CommandLine.*
 import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.PrintStream
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.Callable
 import kotlin.io.path.bufferedWriter
+import kotlin.io.path.createDirectories
+import kotlin.io.path.name
 import kotlin.io.path.reader
 
 @Command(
@@ -26,6 +32,7 @@ import kotlin.io.path.reader
         ValidateDomainSolvingModelCommand::class,
         TreeLoqiToXmlCommand::class,
         DecompileTreeCommand::class,
+        DictToLoqiCommand::class,
         ValidateDomainLoqiCommand::class,
         DomainToRdfCommand::class,
         RdfToDomainLoqiCommand::class,
@@ -186,6 +193,62 @@ class DecompileTreeCommand : Callable<Int> {
                 TreeLoqiWriter.writeTree(decisionTree, writer, treeName)
             }
         }
+
+        return 0
+    }
+}
+
+@Command(
+    name = "dict-to-loqi",
+    mixinStandardHelpOptions = true,
+    description = ["Собирает домен из словарей CSV + domain.ttl и сохраняет его в LOQI-директорию"],
+)
+class DictToLoqiCommand : Callable<Int> {
+
+    @Parameters(
+        index = "0",
+        paramLabel = "MODEL_DIR",
+        description = ["Директория с enums.csv, classes.csv, properties.csv, relationships.csv и domain.ttl"],
+    )
+    lateinit var modelDir: Path
+
+    @Parameters(
+        index = "1",
+        paramLabel = "OUTPUT_DIR",
+        description = ["Директория, куда будет сохранён domain.loqi и скопированы tree-файлы"],
+    )
+    lateinit var outputDir: Path
+
+    @Option(
+        names = ["--separate-metadata"],
+        description = ["При записи LOQI вынести metadata в отдельные секции"],
+        defaultValue = "false",
+    )
+    var separateMetadata: Boolean = false
+
+    @Option(
+        names = ["--separate-class-property-values"],
+        description = ["При записи LOQI вынести значения свойств классов в отдельные секции"],
+        defaultValue = "false",
+    )
+    var separateClassPropertyValues: Boolean = false
+
+    override fun call(): Int {
+        val domain = DomainDictionariesRDFBuilder.buildDomain(modelDir.toString())
+        outputDir.createDirectories()
+        val loqiWriteOptions = buildSet {
+            if (separateMetadata) add(LoqiWriteOptions.SEPARATE_METADATA)
+            if (separateClassPropertyValues) add(LoqiWriteOptions.SEPARATE_CLASS_PROPERTY_VALUES)
+        }
+
+        val domainLoqiPath = outputDir.resolve("domain.loqi")
+        domainLoqiPath.bufferedWriter().use { writer ->
+            DomainLoqiWriter.saveDomain(domain, writer, loqiWriteOptions)
+        }
+
+        val copiedTrees = copyDecisionTreeFiles(modelDir, outputDir)
+        println("LOQI saved to ${domainLoqiPath.toAbsolutePath()}")
+        println("Copied $copiedTrees tree file(s) to ${outputDir.toAbsolutePath()}")
 
         return 0
     }
@@ -463,6 +526,22 @@ private fun resolveConcreteDomain(model: DomainSolvingModel, tag: String?, domai
         domain.addMerge(extraDomain)
     }
     return domain
+}
+
+private fun copyDecisionTreeFiles(sourceDir: Path, outputDir: Path): Int {
+    val sourceUrl = sourceDir.toUri().toURL()
+    val treeMatches = buildList {
+        addAll(DirectoryScanUtils.findFilesMatching(sourceUrl, Regex("((?:tree|tpg)_\\S+|tree)\\.xml")))
+        addAll(DirectoryScanUtils.findFilesMatching(sourceUrl, Regex("((?:tree|tpg)_\\S+|tree)\\.loqi")))
+        addAll(DirectoryScanUtils.findFilesMatching(sourceUrl, Regex("(\\S+)\\.tpg")))
+    }
+
+    treeMatches.forEach { match ->
+        val sourcePath = Path.of(match.url.toURI())
+        Files.copy(sourcePath, outputDir.resolve(sourcePath.name), StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    return treeMatches.size
 }
 
 private const val EXPERIMENTAL_DECOMPILE_WARNING =
