@@ -1,13 +1,11 @@
 import its.model.DomainSolvingModel
 import its.model.definition.DomainModel
-import its.model.definition.loqi.DomainLoqiBuilder
-import its.model.definition.loqi.DomainLoqiWriter
-import its.model.definition.loqi.LoqiWriteOptions
-import its.model.definition.loqi.TreeLoqiBuilder
+import its.model.definition.loqi.*
 import its.model.definition.rdf.DomainRDFFiller
 import its.model.definition.rdf.DomainRDFWriter
 import its.model.definition.rdf.RDFUtils
 import its.model.nodes.DecisionTree
+import its.model.nodes.xml.DecisionTreeXMLBuilder
 import its.model.nodes.xml.DecisionTreeXMLWriter
 import picocli.CommandLine
 import picocli.CommandLine.*
@@ -27,6 +25,7 @@ import kotlin.io.path.reader
     subcommands = [
         ValidateDomainSolvingModelCommand::class,
         TreeLoqiToXmlCommand::class,
+        DecompileTreeCommand::class,
         ValidateDomainLoqiCommand::class,
         DomainToRdfCommand::class,
         RdfToDomainLoqiCommand::class,
@@ -141,6 +140,54 @@ class TreeLoqiToXmlCommand : Callable<Int> {
         domain.validateAndThrow()
         decisionTree.validate(domain)
         println("DecisionTree is valid for ${modelDir!!.toAbsolutePath()}" + (tag?.let { " (tag=$it)" } ?: ""))
+    }
+}
+
+@Command(
+    name = "decompile-tree",
+    mixinStandardHelpOptions = true,
+    description = ["Декомпилирует дерево решений из XML в LOQI/TPG"],
+)
+class DecompileTreeCommand : Callable<Int> {
+
+    @Parameters(
+        index = "0",
+        paramLabel = "TREE_XML",
+        description = ["Путь к XML-файлу дерева решений"],
+    )
+    lateinit var treeXmlFile: Path
+
+    @Option(
+        names = ["-o", "--output"],
+        paramLabel = "TPG_FILE",
+        description = ["Куда сохранить LOQI/TPG. Если не указано, результат печатается в stdout"],
+    )
+    var outputFile: Path? = null
+
+    @Option(
+        names = ["--tree-name"],
+        paramLabel = "NAME",
+        description = ["Имя дерева в TPG-заголовке"],
+        defaultValue = "ExprEval",
+    )
+    lateinit var treeName: String
+
+    override fun call(): Int {
+        System.err.println(EXPERIMENTAL_DECOMPILE_WARNING)
+        val decisionTree = DecisionTreeXMLBuilder.fromXMLFile(treeXmlFile.toUri().toString())
+
+        if (outputFile != null) {
+            outputFile!!.bufferedWriter().use { writer ->
+                TreeLoqiWriter.writeTree(decisionTree, writer, treeName)
+            }
+            println("TPG saved to ${outputFile!!.toAbsolutePath()}")
+        } else {
+            System.out.writer().use { writer ->
+                TreeLoqiWriter.writeTree(decisionTree, writer, treeName)
+            }
+        }
+
+        return 0
     }
 }
 
@@ -417,6 +464,9 @@ private fun resolveConcreteDomain(model: DomainSolvingModel, tag: String?, domai
     }
     return domain
 }
+
+private const val EXPERIMENTAL_DECOMPILE_WARNING =
+    "WARNING: decompile-tree is experimental and does not generate production-ready thought process graphs; use it primarily for analysis."
 
 private fun configureHumanConsoleEncoding() {
     val console = System.console() ?: return
