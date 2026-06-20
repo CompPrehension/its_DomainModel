@@ -1224,14 +1224,22 @@ class TreeLoqiBuilder(
         val seen = HashSet<DecisionTreeNode>()
         lateinit var visitNode: (DecisionTreeNode, ((BranchResultNode) -> Unit)?) -> Unit
 
+        fun withConcludeAction(node: BranchResultNode, replacement: DecisionTreeNode): DecisionTreeNode {
+            val actionExpr = node.actionExpr ?: return replacement
+            val evalProcedure = procedureRegistry.resolve(emptyList(), "eval")
+                ?: throw DomainUseException("Procedure `eval` not found")
+            return evalProcedure.callNode(listOf(actionExpr), replacement)
+        }
+
         fun addRootExit(node: BranchResultNode) {
             /*
              * Если сам start фрагмента является conclude, меняем start
              * BuiltStatement. ThoughtBranch.start остается неизменяемым.
              */
             exits.add(OpenFragmentExit(node.value) { replacement ->
-                replaceAlias(node, replacement)
-                statement.start = replacement
+                val redirected = withConcludeAction(node, replacement)
+                replaceAlias(node, redirected)
+                statement.start = redirected
             })
         }
 
@@ -1251,7 +1259,7 @@ class TreeLoqiBuilder(
 
         fun addOutcomeExit(parent: LinkNode<*>, outcome: Outcome<*>, node: BranchResultNode) {
             exits.add(OpenFragmentExit(node.value) { replacement ->
-                replaceOutcome(parent, outcome, replacement)
+                replaceOutcome(parent, outcome, withConcludeAction(node, replacement))
             })
         }
 
