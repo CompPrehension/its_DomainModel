@@ -329,7 +329,7 @@ metaDecl: META FOR id metadataSection;
 
 fragmentDef: FRAGMENT id '(' treeVarDecls? ')' thoughtBranch;
 
-lambdaDef: LAMBDA id '(' treeVarDecls? ')' '=' exp;
+lambdaDef: LAMBDA id '(' treeVarDecls? ')' '=' exp ';';
 
 //-------------ЛЕКСЕР---------------
 
