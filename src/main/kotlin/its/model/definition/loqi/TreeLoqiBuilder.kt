@@ -129,10 +129,13 @@ class TreeLoqiBuilder(
             val parser = LoqiGrammarParser(tokens)
 
             val errorListener = SyntaxErrorListener()
+            lexer.removeErrorListeners()
+            parser.removeErrorListeners()
+            lexer.addErrorListener(errorListener)
             parser.addErrorListener(errorListener)
 
             val tree: ParseTree = parser.fullTreeDecl()
-            errorListener.getSyntaxErrors().firstOrNull()?.exception?.apply { throw this }
+            errorListener.throwIfAny()
 
             val builder = TreeLoqiBuilder(null, debugMeta = debugMeta)
             tree.accept(builder)

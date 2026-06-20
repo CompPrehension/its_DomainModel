@@ -14,11 +14,16 @@ class SyntaxErrorListener() : BaseErrorListener() {
         return syntaxErrors
     }
 
+    fun throwIfAny() {
+        val firstError = syntaxErrors.firstOrNull() ?: return
+        throw firstError.toException()
+    }
+
     override fun syntaxError(
-        recognizer: Recognizer<*, *>,
-        offendingSymbol: Any,
+        recognizer: Recognizer<*, *>?,
+        offendingSymbol: Any?,
         line: Int, charPositionInLine: Int,
-        msg: String, e: RecognitionException
+        msg: String, e: RecognitionException?
     ) {
         syntaxErrors.add(SyntaxError(recognizer, offendingSymbol, line, charPositionInLine, msg, e))
     }
@@ -28,11 +33,17 @@ class SyntaxErrorListener() : BaseErrorListener() {
     }
 }
 
-data class SyntaxError internal constructor(
-    val recognizer: Recognizer<*, *>,
-    val offendingSymbol: Any,
+class SyntaxError internal constructor(
+    val recognizer: Recognizer<*, *>?,
+    val offendingSymbol: Any?,
     val line: Int,
     val charPositionInLine: Int,
     val message: String,
-    val exception: RecognitionException
-)
+    val exception: RecognitionException?
+) {
+    fun toException(): LoqiDomainBuildException {
+        val formattedMessage = "Syntax error at $line:$charPositionInLine: $message"
+        return exception?.let { LoqiDomainBuildException(line, formattedMessage, it) }
+            ?: LoqiDomainBuildException(line, formattedMessage)
+    }
+}

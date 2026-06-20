@@ -10,21 +10,58 @@ import its.model.definition.DomainDefinitionException
  */
 open class LoqiDomainBuildException : DomainDefinitionException {
     var lineIndex = -1
+    val lineTrace: List<Int>
+    val buildMessage: String
 
-    constructor() : super()
-    constructor(message: String) : super(message.withErrPrefix())
-    constructor(message: String, cause: Throwable) : super(message.withErrPrefix(), cause)
-
-    constructor(line: Int, message: String) : super(message.withErrPrefix(line)) {
-        lineIndex = line
+    constructor() : super() {
+        lineTrace = emptyList()
+        buildMessage = ""
     }
 
-    constructor(line: Int, message: String, cause: Throwable) : super(message.withErrPrefix(line), cause) {
+    constructor(message: String) : super(formatMessage(emptyList(), message)) {
+        lineTrace = emptyList()
+        buildMessage = message
+    }
+
+    constructor(message: String, cause: Throwable) : super(
+        formatMessage(lineTraceFrom(-1, cause), buildMessageFrom(message, cause)),
+        cause,
+    ) {
+        lineTrace = lineTraceFrom(-1, cause)
+        buildMessage = buildMessageFrom(message, cause)
+    }
+
+    constructor(line: Int, message: String) : super(formatMessage(lineTraceFrom(line, null), message)) {
         lineIndex = line
+        lineTrace = lineTraceFrom(line, null)
+        buildMessage = message
+    }
+
+    constructor(line: Int, message: String, cause: Throwable) : super(
+        formatMessage(lineTraceFrom(line, cause), buildMessageFrom(message, cause)),
+        cause,
+    ) {
+        lineIndex = line
+        lineTrace = lineTraceFrom(line, cause)
+        buildMessage = buildMessageFrom(message, cause)
     }
 
     companion object {
-        private fun String.withErrPrefix() = "Error on LOQI model build: $this"
-        private fun String.withErrPrefix(line: Int) = "(at line $line) Error on LOQI model build: $this"
+        private fun buildMessageFrom(message: String, cause: Throwable): String {
+            return (cause as? LoqiDomainBuildException)?.buildMessage ?: message
+        }
+
+        private fun lineTraceFrom(line: Int, cause: Throwable?): List<Int> {
+            val currentLine = if (line >= 0) listOf(line) else emptyList()
+            val causeLines = (cause as? LoqiDomainBuildException)?.lineTrace ?: emptyList()
+            return currentLine + causeLines
+        }
+
+        private fun formatMessage(lines: List<Int>, message: String): String {
+            if (lines.isEmpty()) {
+                return "Error on LOQI model build: $message"
+            }
+            return "Error on LOQI model build (line chain ${lines.joinToString(" -> ")}): $message"
+        }
     }
 }

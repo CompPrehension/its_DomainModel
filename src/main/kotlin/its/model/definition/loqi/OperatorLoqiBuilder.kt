@@ -55,10 +55,13 @@ class OperatorLoqiBuilder(
             val parser = LoqiGrammarParser(tokens)
 
             val errorListener = SyntaxErrorListener()
+            lexer.removeErrorListeners()
+            parser.removeErrorListeners()
+            lexer.addErrorListener(errorListener)
             parser.addErrorListener(errorListener)
 
             val tree: ParseTree = parser.fullExp().exp()
-            errorListener.getSyntaxErrors().firstOrNull()?.exception?.apply { throw this }
+            errorListener.throwIfAny()
 
             val builder = OperatorLoqiBuilder()
             return tree.accept(builder)
