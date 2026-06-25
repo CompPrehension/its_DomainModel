@@ -12,6 +12,7 @@ object BuiltinProcedureRegistry : ProcedureRegistry {
         DebugDumpPointDef(),
         DebugTraceDef(),
         DebugPointDef(),
+        DebugBreakpointDef(),
         SubinterpreterCall(),
         MutableSubinterpreterCall(),
     )
