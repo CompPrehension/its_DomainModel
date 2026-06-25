@@ -65,8 +65,15 @@ class ValidateDomainSolvingModelCommand : Callable<Int> {
     )
     lateinit var buildMethod: DomainSolvingModel.BuildMethod
 
+    @Option(
+        names = ["--debug"],
+        description = ["Включить отладочный режим (не проверять наличие процедур из namespace debug)"],
+        defaultValue = "false",
+    )
+    var debugMode: Boolean = false
+
     override fun call(): Int {
-        DomainSolvingModel(modelDir.toString(), buildMethod).validate()
+        DomainSolvingModel(modelDir.toString(), buildMethod).validate(debug = debugMode)
         println("DomainSolvingModel is valid: ${modelDir.toAbsolutePath()}")
         return 0
     }

@@ -7,6 +7,9 @@ import its.model.definition.loqi.DomainLoqiBuilder
 import its.model.definition.loqi.DomainLoqiWriter
 import its.model.definition.loqi.TreeLoqiBuilder
 import its.model.nodes.DecisionTree
+import its.model.nodes.DecisionTreeElement
+import its.model.nodes.InvalidDecisionTreeException
+import its.model.nodes.ProcedureCallNode
 import its.model.nodes.xml.DecisionTreeXMLBuilder
 import its.model.nodes.xml.DecisionTreeXMLWriter
 import java.io.File
@@ -170,11 +173,17 @@ class DomainSolvingModel(
     }
 
 
+    private fun DecisionTreeElement.allNodes(): Sequence<DecisionTreeElement> = sequence {
+        yield(this@allNodes)
+        linkedElements.forEach { yieldAll(it.allNodes()) }
+    }
+
     /**
      * Валидация модели с выкидыванием исключений
+     * @param debug если false, проверяется отсутствие процедур из namespace debug в деревьях решений
      * @return this
      */
-    fun validate(): DomainSolvingModel {
+    fun validate(debug: Boolean = false): DomainSolvingModel {
         domainModel.validateAndThrow()
         tagsData.keys.forEach { tagName ->
             val mergedTagDomain = getMergedTagDomain(tagName)
@@ -183,6 +192,20 @@ class DomainSolvingModel(
         }
         if(tagsData.isEmpty()){
             decisionTrees.values.forEach { it.validate(domainModel) }
+        }
+        if (!debug) {
+            decisionTrees.values.forEach { tree ->
+                val debugNodes = tree.allNodes()
+                    .filterIsInstance<ProcedureCallNode>()
+                    .filter { it.procedure.isDebug() }
+                    .toList()
+                if (debugNodes.isNotEmpty()) {
+                    throw InvalidDecisionTreeException(
+                        "Decision tree contains debug-namespace procedures but debug=false: " +
+                            debugNodes.joinToString { it.procedure.qualifiedName }
+                    )
+                }
+            }
         }
         return this
     }
