@@ -1222,7 +1222,7 @@ class TreeLoqiBuilder(
 
         val exits = mutableListOf<OpenFragmentExit>()
         val seen = HashSet<DecisionTreeNode>()
-        lateinit var visitNode: (DecisionTreeNode, ((BranchResultNode) -> Unit)?) -> Unit
+        lateinit var visitNode: (DecisionTreeNode, ((BranchResultNode) -> Unit)?, Boolean) -> Unit
 
         fun withConcludeAction(node: BranchResultNode, replacement: DecisionTreeNode): DecisionTreeNode {
             val actionExpr = node.actionExpr ?: return replacement
@@ -1263,13 +1263,13 @@ class TreeLoqiBuilder(
             })
         }
 
-        fun visitLinkNodeOutcomes(node: LinkNode<*>) {
+        fun visitLinkNodeOutcomes(node: LinkNode<*>, insideNestedBranch: Boolean) {
             node.outcomes.toList().forEach { outcome ->
                 val child = outcome.node
-                if (child is BranchResultNode && child.value in outResults) {
+                if (!insideNestedBranch && child is BranchResultNode && child.value in outResults) {
                     addOutcomeExit(node, outcome, child)
                 } else {
-                    visitNode(child, null)
+                    visitNode(child, null, insideNestedBranch)
                 }
             }
         }
@@ -1286,16 +1286,21 @@ class TreeLoqiBuilder(
                     "Cannot redirect `${start.value}` to out when it is the start of a nested thought branch"
                 )
             }
-            visitNode(start, null)
+            /*
+             * Внутри тела цикла/агрегации conclude обособлен — он часть логики
+             * самого узла, а не терминальный выход фрагмента. Флаг insideNestedBranch
+             * запрещает сбор таких BranchResultNode как открытых exits.
+             */
+            visitNode(start, null, true)
         }
 
-        visitNode = fun(node: DecisionTreeNode, rootReplace: ((BranchResultNode) -> Unit)?) {
+        visitNode = fun(node: DecisionTreeNode, rootReplace: ((BranchResultNode) -> Unit)?, insideNestedBranch: Boolean) {
             if (!seen.add(node)) {
                 return
             }
 
             if (node is BranchResultNode) {
-                if (node.value in outResults) {
+                if (node.value in outResults && !insideNestedBranch) {
                     rootReplace?.invoke(node)
                         ?: throw LoqiDomainBuildException(
                             line,
@@ -1313,11 +1318,11 @@ class TreeLoqiBuilder(
             }
 
             if (node is LinkNode<*>) {
-                visitLinkNodeOutcomes(node)
+                visitLinkNodeOutcomes(node, insideNestedBranch)
             }
         }
 
-        visitNode(statement.start, ::addRootExit)
+        visitNode(statement.start, ::addRootExit, false)
         if (exits.isEmpty()) {
             throw LoqiDomainBuildException(line, "Fragment call has out redirection, but no matching conclude was found")
         }
