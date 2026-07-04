@@ -33,7 +33,7 @@ class ProcedureCallNode(val procedure: CallableProcedureDef, val arguments: List
             outcomes.get(0).key,
             "Procedure call outcome must be `true` value (by contract)"
         )
-        if (arguments.size != procedure.arguments.size) {
+        if (arguments.size != procedure.arguments.size && !procedure.varArgs) {
             throw DomainUseException("Argument size mismatch for ${procedure.name} (${procedure.javaClass.name}) (${arguments.size} != ${procedure.arguments.size})")
         }
         for (argument in arguments) {

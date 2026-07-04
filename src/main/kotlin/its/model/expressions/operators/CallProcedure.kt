@@ -1,6 +1,7 @@
 package its.model.expressions.operators
 
 import its.model.definition.DomainModel
+import its.model.definition.DomainUseException
 import its.model.definition.procedures.CallableProcedureDef
 import its.model.definition.types.Type
 import its.model.expressions.ExpressionContext
@@ -21,6 +22,12 @@ class CallProcedure(val procedure: CallableProcedureDef,
         context: ExpressionContext
     ): Type<*> {
         results.checkValid(procedure.returnType == null, "Procedure with no return type can't be used as expression");
+        if (arguments.size != procedure.arguments.size && !procedure.varArgs) {
+            throw DomainUseException("Argument size mismatch for ${procedure.name} (${procedure.javaClass.name}) (${arguments.size} != ${procedure.arguments.size})")
+        }
+        for (argument in arguments) {
+            argument.validateAndGetType(domainModel, results, context)
+        }
         return procedure.returnType!!;
     }
 
