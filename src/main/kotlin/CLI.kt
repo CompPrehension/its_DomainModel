@@ -7,6 +7,12 @@ import its.model.definition.rdf.DomainRDFFiller
 import its.model.definition.rdf.DomainRDFWriter
 import its.model.definition.rdf.RDFUtils
 import its.model.nodes.DecisionTree
+import its.model.nodes.DecisionTreeNode
+import its.model.nodes.allNodes
+import its.model.nodes.childrenSummary
+import its.model.nodes.toHumanString
+import its.model.nodes.toJsonMap
+import its.model.nodes.toView
 import its.model.nodes.xml.DecisionTreeXMLBuilder
 import its.model.nodes.xml.DecisionTreeXMLWriter
 import picocli.CommandLine
@@ -32,6 +38,7 @@ import kotlin.io.path.reader
         ValidateDomainSolvingModelCommand::class,
         TreeLoqiToXmlCommand::class,
         DecompileTreeCommand::class,
+        DiscoverTreeCommand::class,
         DictToLoqiCommand::class,
         ValidateDomainLoqiCommand::class,
         DomainToRdfCommand::class,
@@ -203,6 +210,124 @@ class DecompileTreeCommand : Callable<Int> {
 
         return 0
     }
+}
+
+@Command(
+    name = "discover-tree",
+    mixinStandardHelpOptions = true,
+    description = ["Ищет узлы дерева решений по метаданным (LOQI/TPG или XML)"],
+)
+class DiscoverTreeCommand : Callable<Int> {
+
+    @Parameters(
+        index = "0",
+        paramLabel = "TREE_FILE",
+        description = ["Путь к дереву решений: LOQI/TPG (.loqi/.tpg) или XML (.xml)"],
+    )
+    lateinit var treeFile: Path
+
+    @Option(
+        names = ["-m", "--meta"],
+        paramLabel = "KEY=VALUE",
+        description = [
+            "Критерий поиска по метаданным узла (можно указать несколько раз). " +
+                "Несколько критериев объединяются через И, если не указан --union. " +
+                "Если среди критериев указан line, дерево из LOQI/TPG строится с debug-метаданными, " +
+                "чтобы line стал доступен для поиска",
+        ],
+    )
+    var metaCriteria: List<String> = emptyList()
+
+    @Option(
+        names = ["--union"],
+        description = ["Объединять несколько критериев поиска через ИЛИ вместо И"],
+        defaultValue = "false",
+    )
+    var union: Boolean = false
+
+    @Option(
+        names = ["--limit"],
+        paramLabel = "LIMIT",
+        description = ["Максимальное число выводимых узлов. Если не указано, выводятся все найденные узлы"],
+    )
+    var limit: Int? = null
+
+    @Option(
+        names = ["--debug"],
+        description = [
+            "Включить debug-метаданные (line) при построении дерева из LOQI/TPG, " +
+                "даже если line не используется как критерий поиска",
+        ],
+        defaultValue = "false",
+    )
+    var debug: Boolean = false
+
+    @Option(
+        names = ["--children"],
+        description = [
+            "Показать непосредственные (глубины 1) дочерние узлы каждого найденного узла: " +
+                "общее число и дескрипторы именованных из них (по id/line/skill)",
+        ],
+        defaultValue = "false",
+    )
+    var showChildren: Boolean = false
+
+    @Option(
+        names = ["--format"],
+        paramLabel = "FORMAT",
+        description = ["Формат вывода: human или jsonl"],
+        defaultValue = "human",
+    )
+    lateinit var outputFormat: String
+
+    override fun call(): Int {
+        require(outputFormat.equals("human", ignoreCase = true) || outputFormat.equals("jsonl", ignoreCase = true)) {
+            "Unsupported output format '$outputFormat'. Expected: human or jsonl"
+        }
+        require(metaCriteria.isNotEmpty()) { "At least one --meta KEY=VALUE criterion is required" }
+        limit?.let { require(it >= 0) { "Limit must be non-negative" } }
+
+        val criteria = metaCriteria.map(::parseMetaCriterion)
+        val debugMeta = debug || criteria.any { (key, _) -> key == "line" }
+
+        val decisionTree = loadDecisionTreeForDiscovery(treeFile, debugMeta)
+        val matches = decisionTree.allNodes()
+            .filter { it.matchesMetaCriteria(criteria, union) }
+            .toList()
+        val shown = limit?.let { matches.take(it) } ?: matches
+
+        if (isJsonl()) {
+            printJsonLine(
+                mapOf(
+                    "type" to "summary",
+                    "found" to matches.size,
+                    "shown" to shown.size,
+                )
+            )
+            shown.forEach { node ->
+                val childrenFields = if (showChildren) mapOf("children" to node.childrenSummary().toJsonMap()) else emptyMap()
+                printJsonLine(mapOf("type" to "node") + node.toView().toJsonMap() + childrenFields)
+            }
+        } else {
+            if (matches.isEmpty()) {
+                println("No nodes found matching the given criteria")
+            } else {
+                val suffix = if (shown.size < matches.size) ", showing ${shown.size}" else ""
+                println("Found ${matches.size} node(s)$suffix")
+                shown.forEachIndexed { index, node ->
+                    println()
+                    println("#${index + 1} ${node.toView().toHumanString()}")
+                    if (showChildren) {
+                        println(node.childrenSummary().toHumanString().prependIndent("  "))
+                    }
+                }
+            }
+        }
+
+        return 0
+    }
+
+    private fun isJsonl(): Boolean = outputFormat.equals("jsonl", ignoreCase = true)
 }
 
 @Command(
@@ -533,6 +658,68 @@ private fun resolveConcreteDomain(model: DomainSolvingModel, tag: String?, domai
         domain.addMerge(extraDomain)
     }
     return domain
+}
+
+private fun parseMetaCriterion(raw: String): Pair<String, String> {
+    val separatorIndex = raw.indexOf('=')
+    require(separatorIndex > 0) { "Invalid --meta value '$raw'. Expected format KEY=VALUE" }
+    return raw.substring(0, separatorIndex) to raw.substring(separatorIndex + 1)
+}
+
+private fun DecisionTreeNode.matchesMetaCriteria(criteria: List<Pair<String, String>>, union: Boolean): Boolean {
+    val checks = criteria.map { (key, value) ->
+        metadata.entries.any { it.propertyName == key && it.value.toString() == value }
+    }
+    return if (union) checks.any { it } else checks.all { it }
+}
+
+private fun loadDecisionTreeForDiscovery(treeFile: Path, debugMeta: Boolean): DecisionTree =
+    if (treeFile.name.endsWith(".xml", ignoreCase = true)) {
+        DecisionTreeXMLBuilder.fromXMLFile(treeFile.toUri().toString())
+    } else {
+        treeFile.reader().use { reader -> TreeLoqiBuilder.buildTree(reader, debugMeta) }
+    }
+
+private fun jsonString(value: String): String {
+    val builder = StringBuilder(value.length + 2)
+    builder.append('"')
+    value.forEach { char ->
+        when (char) {
+            '"' -> builder.append("\\\"")
+            '\\' -> builder.append("\\\\")
+            '\b' -> builder.append("\\b")
+            '\u000C' -> builder.append("\\f")
+            '\n' -> builder.append("\\n")
+            '\r' -> builder.append("\\r")
+            '\t' -> builder.append("\\t")
+            else -> {
+                if (char.code < 0x20) {
+                    builder.append("\\u")
+                    builder.append(char.code.toString(16).padStart(4, '0'))
+                } else {
+                    builder.append(char)
+                }
+            }
+        }
+    }
+    builder.append('"')
+    return builder.toString()
+}
+
+private fun toJson(value: Any?): String =
+    when (value) {
+        null -> "null"
+        is String -> jsonString(value)
+        is Number, is Boolean -> value.toString()
+        is Map<*, *> -> value.entries.joinToString(prefix = "{", postfix = "}") { (key, entryValue) ->
+            "${jsonString(key.toString())}:${toJson(entryValue)}"
+        }
+        is Iterable<*> -> value.joinToString(prefix = "[", postfix = "]") { toJson(it) }
+        else -> jsonString(value.toString())
+    }
+
+private fun printJsonLine(value: Map<String, Any?>) {
+    println(toJson(value))
 }
 
 private fun copyDecisionTreeFiles(sourceDir: Path, outputDir: Path): Int {
