@@ -45,6 +45,20 @@ class DomainLoqiWriter private constructor(
         fun saveDomain(domainModel: DomainModel, writer: Writer, saveOptions: Set<LoqiWriteOptions> = emptySet()) {
             DomainLoqiWriter(domainModel, writer, saveOptions).write()
         }
+
+        /**
+         * Записывает декларацию одного объекта [objectDef] в LOQI: `obj name : Class { ... } [ metadata ]`,
+         * без остальных секций домена (классы, другие объекты и т.д.)
+         */
+        @JvmStatic
+        fun saveObject(objectDef: ObjectDef, writer: Writer, saveOptions: Set<LoqiWriteOptions> = emptySet()) {
+            DomainLoqiWriter(objectDef.domainModel, writer, saveOptions).writeSingleObject(objectDef)
+        }
+    }
+
+    private fun writeSingleObject(objectDef: ObjectDef) {
+        objectDef.writeObject()
+        iWriter.flush()
     }
 
     private fun write() {
