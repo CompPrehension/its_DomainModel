@@ -64,6 +64,8 @@ sealed class DecisionTreeElement : MetaOwner, Describable {
         val className = this::class.simpleName ?: "DecisionTreeElement"
         val metaParts = listOfNotNull(
             metadata["id"]?.let { "id=$it" },
+            metadata["alias"]?.let { "alias=$it" },
+            metadata["label"]?.let { "label=$it" },
             metadata["line"]?.let { "line=$it" },
         )
         return if (metaParts.isEmpty()) {

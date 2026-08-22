@@ -87,29 +87,37 @@ fun DecisionTreeNode.childNodes(): List<DecisionTreeNode> =
     linkedElements.flatMap { it.immediateNodes() }
 
 /**
- * Дескриптор именованного узла: значения его метаданных `id`, `line` и `skill` (только те, что заданы)
+ * Дескриптор именованного узла: значения его метаданных `id`, `alias`, `line` и `skill`
+ * (`label` используется как запасное значение для `alias`)
+ * (только те, что заданы)
  */
 data class DecisionTreeNodeDescriptor(
     val id: Any?,
     val line: Any?,
     val skill: Any?,
-)
+    val alias: Any?,
+) {
+    constructor(id: Any?, line: Any?, skill: Any?) : this(id, line, skill, null)
+}
 
 /**
- * Строит [DecisionTreeNodeDescriptor] из метаданных `id`/`line`/`skill` узла, либо `null`,
- * если ни одно из этих трёх свойств не задано
+ * Строит [DecisionTreeNodeDescriptor] из метаданных `id`/`alias`/`line`/`skill` узла, либо `null`,
+ * используя `label` как запасное значение для `alias`,
+ * если ни одно из этих свойств не задано
  */
 fun DecisionTreeNode.toDescriptorOrNull(): DecisionTreeNodeDescriptor? {
     val id = metadata["id"]
+    val alias = metadata["alias"] ?: metadata["label"]
     val line = metadata["line"]
     val skill = metadata["skill"]
-    if (id == null && line == null && skill == null) return null
-    return DecisionTreeNodeDescriptor(id, line, skill)
+    if (id == null && alias == null && line == null && skill == null) return null
+    return DecisionTreeNodeDescriptor(id, line, skill, alias)
 }
 
 /**
  * Сводка о дочерних узлах [this]: общее число непосредственных дочерних узлов и дескрипторы
- * именованных из них (узлы без `id`/`line`/`skill` в дескрипторы не попадают, но учитываются в [total])
+ * именованных из них (узлы без `id`/`alias`/`label`/`line`/`skill` в дескрипторы не попадают,
+ * но учитываются в [total])
  */
 data class DecisionTreeNodeChildren(
     val total: Int,
@@ -126,6 +134,7 @@ fun DecisionTreeNode.childrenSummary(): DecisionTreeNodeChildren {
 
 fun DecisionTreeNodeDescriptor.toJsonMap(): Map<String, Any?> = buildMap {
     id?.let { put("id", it) }
+    alias?.let { put("alias", it) }
     line?.let { put("line", it) }
     skill?.let { put("skill", it) }
 }
@@ -138,6 +147,7 @@ fun DecisionTreeNodeChildren.toJsonMap(): Map<String, Any?> = mapOf(
 fun DecisionTreeNodeDescriptor.toHumanString(): String =
     listOfNotNull(
         id?.let { "id=$it" },
+        alias?.let { "alias=$it" },
         line?.let { "line=$it" },
         skill?.let { "skill=$it" },
     ).joinToString(", ")
