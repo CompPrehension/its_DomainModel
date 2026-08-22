@@ -45,6 +45,17 @@ class MetaData {
     operator fun get(locCode: String?, name: String) = get(MetadataProperty(locCode, name))
 
     /**
+     * Получить нелокализованные метаданные или [defaultValue], если свойства нет
+     */
+    fun getOrDefault(name: String, defaultValue: Any?): Any? = get(name) ?: defaultValue
+
+    /**
+     * Получить локализованные метаданные или [defaultValue], если свойства нет
+     */
+    fun getOrDefault(locCode: String?, name: String, defaultValue: Any?): Any? =
+        get(locCode, name) ?: defaultValue
+
+    /**
      * Получить нелокализованные строковые метаданные
      */
     fun getString(name: String) = get(name)?.toString()
