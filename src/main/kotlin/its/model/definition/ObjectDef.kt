@@ -1,5 +1,6 @@
 package its.model.definition
 
+import mp.utils.findCycles
 import java.util.*
 
 /**
@@ -141,6 +142,8 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
         //проверка квантификаторов отношений
         val subjects = mutableMapOf<Pair<ObjectDef, RelationshipDef>, Int>()
         val objects = mutableMapOf<Pair<ObjectDef, RelationshipDef>, Int>()
+        //связи "субъект -> объект" по шкальным отношениям, для проверки ацикличности
+        val scaleLinks = mutableMapOf<RelationshipDef, MutableMap<ObjectDef, ObjectDef>>()
         for (subj in this) {
             for (link in subj.relationshipLinks) {
                 val relationship = link.getKnownRelationship(results)
@@ -151,6 +154,11 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
 
                 objects[subj to relationship] = (objects[subj to relationship] ?: 0) + 1
                 subjects[obj to relationship] = (subjects[obj to relationship] ?: 0) + 1
+
+                if (relationship.isScalar) {
+                    //Лишние связи здесь игнорируются - о них сообщит проверка квантификаторов
+                    scaleLinks.computeIfAbsent(relationship) { mutableMapOf() }.putIfAbsent(subj, obj)
+                }
             }
         }
         for ((subjToRel, count) in objects) {
@@ -174,6 +182,34 @@ class ObjectContainer(domainModel: DomainModel) : RootDefContainer<ObjectDef>(do
                 "$obj has too many incoming links of $relationship: " +
                         "it is an object of $count links, but the relationship is quantified as $quantifier"
             )
+        }
+
+        //проверка ацикличности структур, задаваемых шкалами
+        checkScalesAreAcyclic(scaleLinks, results)
+    }
+
+    /**
+     * Проверить, что структуры, образуемые отношениями со шкалой ([RelationshipDef.isScalar]), не содержат циклов.
+     *
+     * Шкала требует, чтобы связанные ей объекты выстраивались в линию (линейная шкала) или в дерево (частичная),
+     * а значит цепочки связей не должны замыкаться. Квантификаторы этого не гарантируют:
+     * цикл `a => rel(b)`, `b => rel(c)`, `c => rel(a)` не нарушает ни `{1 -> 1}`, ни `{* -> 1}`.
+     *
+     * @param linksByRelationship для каждого шкального отношения - его связи в виде "субъект -> объект"
+     */
+    private fun checkScalesAreAcyclic(
+        linksByRelationship: Map<RelationshipDef, Map<ObjectDef, ObjectDef>>,
+        results: DomainValidationResults,
+    ) {
+        for ((relationship, links) in linksByRelationship) {
+            val scaleType = (relationship.kind as BaseRelationshipKind).scaleType
+            for (cycle in findCycles(links.keys) { links[it] }) {
+                results.invalid(
+                    "$relationship has to form an acyclic structure as it is declared as $scaleType, " +
+                            "but its links form a cycle: " +
+                            (cycle + cycle.first()).joinToString(" => ") { it.name }
+                )
+            }
         }
     }
 }
