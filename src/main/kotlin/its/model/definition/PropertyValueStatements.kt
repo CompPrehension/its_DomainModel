@@ -133,8 +133,10 @@ class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
     }
 
     fun addOrReplace(statement: PropertyValueStatement<Owner>) {
-        removeElement(getExisting(statement))
-        add(statement)
+        val copy = copyForOwner(statement)
+        copy.validateAndThrowInvalid()
+        removeElement(getExisting(copy))
+        addToInner(copy)
     }
 
     override fun removeElement(element: Any?): Boolean {
