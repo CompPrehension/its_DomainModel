@@ -1463,7 +1463,7 @@ class TreeLoqiBuilder(
     }
 
     private fun checkReachabilityInternal(node: DecisionTreeNode, visiting: MutableSet<DecisionTreeNode>, strict: Boolean): Boolean {
-        if (node is BranchResultNode || (node is DummyNode && !strict)) {
+        if (node is BranchResultNode || node is BranchResultRedirectingNode || (node is DummyNode && !strict)) {
             return true
         }
         if (!visiting.add(node)) {
