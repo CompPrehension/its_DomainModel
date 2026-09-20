@@ -25,6 +25,7 @@ class TreeLoqiWriter private constructor(
 ) : LinkNodeBehaviour<Unit>, DecisionTreeBehaviour<Unit> {
 
     private val pendingMetaFor = mutableListOf<Pair<String, MetaData>>()
+    private val syntheticAliases = java.util.IdentityHashMap<MetaData, String>()
 
     companion object {
         private fun Operator.loqiCompact(): String = description
@@ -81,18 +82,18 @@ class TreeLoqiWriter private constructor(
     override fun process(node: QuestionNode) {
         queueNodeMeta(node)
         val prefix = buildAskPrefix(node)
-        if (hasNonBooleanOutcomes(node)) {
-            writeEqualityChainQuestion(node)
-            return
-        }
-        val trueBr = node.outcomes.find { it.key == true }
-        val falseBr = node.outcomes.find { it.key == false }
-        if (!node.isSwitch && node.trivialityExpr == null && trueBr != null && falseBr != null
-            && trueBr.node !is DummyNode && falseBr.node !is DummyNode && node.outcomes.size == 2
-            && falseBr.metadata.loqiLinkAlias() == null
+        // `ask (...) out X else { ... }`: the heavier outcome continues the branch, the other goes into `else`.
+        // The form fixes the order "out, then else" and gives the else-outcome no place for an alias,
+        // so it is used only when the outcomes already come in that order and the else-outcome carries no metadata.
+        if (!node.isSwitch && node.trivialityExpr == null && node.outcomes.size == 2
+            && node.outcomes.all { it.key is Boolean && it.node !is DummyNode }
         ) {
-            writeBooleanAskOutElse(node, prefix, trueBr, falseBr)
-            return
+            val outBr = heaviest(node.outcomes)
+            val elseBr = node.outcomes.first { it !== outBr }
+            if (outBr === node.outcomes.first() && elseBr.metadata.loqiLinkAlias() == null) {
+                writeBooleanAskOutElse(node, prefix, outBr, elseBr)
+                return
+            }
         }
         if (node.outcomes.none { it.node is DummyNode } && node.outcomes.isNotEmpty()) {
             writeAskWithChainedOut(node, prefix)
@@ -116,61 +117,20 @@ class TreeLoqiWriter private constructor(
         }
     }
 
-  private fun hasNonBooleanOutcomes(node: QuestionNode): Boolean =
-        node.outcomes.any { it.key !is Boolean }
-
-    /** Non-boolean outcomes use chained equality asks because `N -> out` is invalid in LOQI. */
-    private fun writeEqualityChainQuestion(node: QuestionNode) {
-        val outcomes = node.outcomes.toList()
-        for (i in outcomes.indices) {
-            val outcome = outcomes[i]
-            val isLast = i == outcomes.lastIndex
-            val eqExpr = "( ${node.expr.loqiCompact()} == ${formatOutcomeKey(outcome.key as Any)} )"
-            writer.write("ask ( $eqExpr ) {")
-            writer.newLine()
-            writer.indent()
-            if (isLast) {
-                writer.writeln("true -> ${formatOut(outcome.metadata)};")
-                if (outcomes.size > 1) {
-                    writer.write("false -> {")
-                    writer.newLine()
-                    writer.indent()
-                    writer.writeln("conclude: null;")
-                    writer.unindent()
-                    writer.writeln("};")
-                }
-            } else {
-                writer.write("true ${formatArrow(outcome.metadata)} {")
-                writer.newLine()
-                writer.indent()
-                writeSubtree(outcome.node)
-                writer.unindent()
-                writer.writeln("};")
-                writer.writeln("false -> out;")
-            }
-            writer.unindent()
-            writer.write("}")
-            if (i == 0) {
-                finishStmtAlias(node.metadata)
-            } else {
-                writer.writeln(";")
-            }
-            if (isLast) {
-                writeSubtree(outcome.node)
-            }
-        }
-    }
-
-    /** LOQI requires one `out` branch per question; chain the redirected outcome after the ask. */
+    /**
+     * LOQI requires one `out` branch per question; the heaviest subtree is redirected after the ask
+     * so that the main line of reasoning stays flat. The choice does not affect the tree:
+     * [TreeLoqiBuilder] puts the `out` outcome back at its textual position.
+     */
     private fun writeAskWithChainedOut(node: QuestionNode, prefix: String) {
-        val outOutcome = node.outcomes.maxByOrNull { subtreeWeight(it.node) }!!
+        val outOutcome = heaviest(node.outcomes)
         writer.write(prefix)
         writer.writeln(" {")
         writer.indent()
         for (outcome in node.outcomes) {
             if (outcome == outOutcome) {
                 queueNodeMeta(outcome)
-                writer.writeln("${formatOutcomeKey(outcome.key)} -> ${formatOut(outcome.metadata)};")
+                writer.writeln("${formatOutcomeKey(outcome.key)} ${formatArrow(outcome.metadata)} out;")
             } else {
                 writeQuestionOutcomeBranch(outcome)
             }
@@ -180,29 +140,37 @@ class TreeLoqiWriter private constructor(
         writeSubtree(outOutcome.node)
     }
 
+    /** Outcome with the largest subtree; ties are broken by key, not by position, so the written text is stable across round-trips. */
+    private fun heaviest(outcomes: Outcomes<*>): Outcome<*> =
+        outcomes.maxWith(compareBy<Outcome<*>> { subtreeWeight(it.node) }.thenBy { it.key.toString() })
+
+    /** Number of elements in the subtree (outcomes and cycle bodies included). */
+    private fun subtreeWeight(element: DecisionTreeElement): Int =
+        1 + element.linkedElements.sumOf { subtreeWeight(it) }
+
     private fun writeBooleanAskOutElse(
         node: QuestionNode,
         prefix: String,
-        trueBr: Outcome<*>,
-        falseBr: Outcome<*>,
+        outBr: Outcome<*>,
+        elseBr: Outcome<*>,
     ) {
-        queueNodeMeta(trueBr)
+        queueNodeMeta(outBr)
         writer.write(prefix)
-        writer.write(" ${formatOut(trueBr.metadata)} true else {")
+        writer.write(" ${formatOut(outBr.metadata)} ${formatOutcomeKey(outBr.key as Any)} else {")
         writer.newLine()
         writer.indent()
-        writeSubtree(falseBr.node)
+        writeSubtree(elseBr.node)
         writer.unindent()
         writer.write("}")
         finishStmtAlias(node.metadata)
-        writeSubtree(trueBr.node)
+        writeSubtree(outBr.node)
     }
 
     private fun writeQuestionOutcomes(node: QuestionNode) {
         for (outcome in node.outcomes) {
             if (outcome.node is DummyNode) {
                 queueNodeMeta(outcome)
-                writer.writeln("${formatOutcomeKey(outcome.key)} -> ${formatOut(outcome.metadata)};")
+                writer.writeln("${formatOutcomeKey(outcome.key)} ${formatArrow(outcome.metadata)} out;")
             } else {
                 writeQuestionOutcomeBranch(outcome)
             }
@@ -217,15 +185,6 @@ class TreeLoqiWriter private constructor(
         writeSubtree(outcome.node)
         writer.unindent()
         writer.writeln("};")
-    }
-
-    private fun subtreeWeight(node: DecisionTreeNode): Int = when (node) {
-        is BranchResultNode -> 1
-        is QuestionNode -> 5
-        is FindActionNode -> 20
-        is BranchAggregationNode -> 30
-        is CycleAggregationNode -> 40
-        else -> 10
     }
 
     override fun process(node: FindActionNode) {
@@ -260,7 +219,7 @@ class TreeLoqiWriter private constructor(
         for (outcome in node.outcomes) {
             if (outcome.node is DummyNode) {
                 queueNodeMeta(outcome)
-                writer.writeln("${formatOutcomeKey(outcome.key)} -> ${formatOut(outcome.metadata)};")
+                writer.writeln("${formatOutcomeKey(outcome.key)} ${formatArrow(outcome.metadata)} out;")
             } else {
                 writeQuestionOutcomeBranch(outcome)
             }
@@ -447,22 +406,9 @@ class TreeLoqiWriter private constructor(
     }
 
     private fun writeConcludeMetadata(metadata: MetaData) {
-        val concludeKeys = setOf("skill", "explanation", "error", "law", "muted", "TEMPLATING_ID", "errorNode")
-        val filtered = metadata.entries.filter { (_, name, _) ->
-            name in concludeKeys || name.endsWith("explanation")
-        }
-        if (filtered.isEmpty()) return
+        if (metadata.isEmpty()) return
         writer.write(" ")
-        writer.writeln("[")
-        writer.indent()
-        for ((locCode, propertyName, value) in filtered.sortedWith(
-            compareBy<MetadataPropertyValue> { it.locCode ?: "" }.thenBy { it.propertyName }
-        )) {
-            if (locCode != null) writer.write("${locCode.toLoqiName()}.")
-            writer.writeln("${propertyName.toLoqiName()} = ${value.toLoqiLiteral()};")
-        }
-        writer.unindent()
-        writer.write("]")
+        metadata.writeMetadataBlock(writer)
     }
 
     private fun flushPendingMetaFor() {
@@ -478,12 +424,17 @@ class TreeLoqiWriter private constructor(
 
     private fun metaForName(alias: String): String = alias.toLoqiName()
 
-    /** LOQI-safe alias for `as`, `meta for`, `-[id]->`, and `out[id]`; human-readable XML aliases fall back to n{TEMPLATING_ID}. */
+    /**
+     * LOQI-safe alias for `as`, `meta for`, `-[id]->` and `out[id]` (the latter only in the `ask (...) out[id] ... else` form).
+     * Human-readable XML aliases fall back to n{TEMPLATING_ID}; metadata without either still has to reach
+     * a `meta for` declaration, so it gets a synthetic handle (the original `alias` value stays inside the metadata).
+     */
     private fun MetaData.loqiLinkAlias(): String? {
         val alias = getString("alias")
         if (!alias.isNullOrBlank() && alias.none { it.isWhitespace() }) return alias
-        val tid = getString("TEMPLATING_ID") ?: return null
-        return "n$tid"
+        getString("TEMPLATING_ID")?.let { return "n$it" }
+        if (isEmpty()) return null
+        return syntheticAliases.getOrPut(this) { "_m${syntheticAliases.size + 1}" }
     }
 
     private fun MetaData.writeMetadataBlock(writer: IndentWriter, terminateMetaDecl: Boolean = false) {

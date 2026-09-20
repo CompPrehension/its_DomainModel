@@ -52,6 +52,14 @@ abstract class Association<K, V> : ArrayList<V> {
         return false
     }
 
+    /** Замена элемента на позиции с сохранением порядка; ключ нового элемента может отличаться от старого. */
+    override fun set(index: Int, element: V): V {
+        val previous = super.set(index, element)
+        map.remove(getKey(previous), previous)
+        map[getKey(element)] = element
+        return previous
+    }
+
     override fun addAll(elements: Collection<V>): Boolean {
         var added = false
         elements.forEach { added = add(it) || added }

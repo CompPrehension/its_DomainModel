@@ -363,18 +363,17 @@ class TreeLoqiBuilder(
             } else {
                 /*
                  * `a, b -> out` превращается в несколько outcomes, которые ведут
-                 * в один следующий statement. Сохраняем ключи, меняем только target.
+                 * в один следующий statement. Сохраняем ключи и позицию, меняем только target.
                  */
                 outcomes.forEach { outcome ->
-                    prevTail.outcomes.remove(outcome)
-                    prevTail.outcomes.add(Outcome(outcome.key, next)
+                    val index = prevTail.outcomes.indexOf(outcome)
+                    prevTail.outcomes[index] = Outcome(outcome.key, next)
                         .also {checkResultReachability(it)}
                         .also {
                             val alias = findAlias(outcome)
                             aliases[alias]?.remove(outcome)
                             aliases[alias]?.add(it)
                         }
-                    )
                 }
             }
         } else {
@@ -641,9 +640,10 @@ class TreeLoqiBuilder(
             }
             val opposite = !exp;
 
+            // Порядок исходов следует тексту: `out` записан раньше `else`
             return BranchInfo(listOf(exp), listOf(), Outcomes(mutableListOf(
-                Outcome(opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
                 Outcome(exp, DummyNode()).also {metaAliasForOut(ctx.out(), it)},
+                Outcome(opposite, visitThoughtBranch(ctx.thoughtBranch()).start),
             )))
         }
 
@@ -675,7 +675,8 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("You can redirect only one resulting (boolean or branch result) outcome branch");
         }
 
-        val outcomeOut = outBranch.flatMap { branch -> getExpressionKeys(branch) }
+        val outcomeOutByBranch = outBranch.map { branch -> branch to getExpressionKeys(branch) }
+        val outcomeOut = outcomeOutByBranch.flatMap { (_, keys) -> keys }
 
         /*
          * `out` не может дублировать уже построенную явную ветку:
@@ -686,13 +687,43 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Duplicate outcome branch for `$duplicateOut`")
         }
 
-        outcomeOut.forEach { out ->
-            outcomes.add(Outcome(out, DummyNode()).also{metaAliasForOut(ctx.out(), it)});
+        /*
+         * Алиас out-ветки: `out[id]` в форме `ask (...) out[id] ... else`,
+         * либо `-[id]-> out` в форме со списком веток.
+         */
+        val outOutcomes = outcomeOutByBranch.associate { (branch, keys) ->
+            branch to keys.map { out ->
+                Outcome<Any>(out, DummyNode()).also {
+                    metaAliasForOut(ctx.out(), it)
+                    metaAliasForBranch(branch, it)
+                }
+            }
         }
-        
-        checkNoDuplicateOutcomeBranches(outcomes)
-        outcomes.forEach {checkResultReachability(it)}
-        return BranchInfo(outcomeOut, thoughtBranches, outcomes)
+
+        val ordered = inTextualOrder(ctx.branches().branch(), outcomes, outOutcomes) { if (isExpressionOutcomeBranch(it)) getExpressionKeys(it) else null }
+        checkNoDuplicateOutcomeBranches(ordered)
+        ordered.forEach {checkResultReachability(it)}
+        return BranchInfo(outcomeOut, thoughtBranches, ordered)
+    }
+
+    /**
+     * Исходы в порядке их записи в тексте: `out`-исход встаёт туда, где стоит его ветка.
+     */
+    private fun <K> inTextualOrder(
+        branches: List<LoqiGrammarParser.BranchContext>,
+        explicit: Outcomes<K>,
+        outByBranch: Map<LoqiGrammarParser.BranchContext, List<Outcome<K>>>,
+        keysOf: (LoqiGrammarParser.BranchContext) -> List<Any>?,
+    ): Outcomes<K> {
+        val ordered = mutableListOf<Outcome<K>>()
+        for (branch in branches) {
+            outByBranch[branch]?.let { ordered.addAll(it); continue }
+            if (branch.thoughtBranch() == null) continue
+            keysOf(branch)?.forEach { key -> explicit.find { it.key == key }?.let(ordered::add) }
+        }
+        // Исходы, не привязанные к веткам текста (например, defaultOut агрегации), - в конце
+        (explicit + outByBranch.values.flatten()).filter { it !in ordered }.forEach(ordered::add)
+        return Outcomes(ordered)
     }
 
     /*
@@ -744,15 +775,21 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Duplicate outcome branch for `$duplicateOut`")
         }
 
-        outcomeOut.forEach { out ->
-            outcomes.add(Outcome(out, DummyNode()).also{
-                if (!outBranch.isEmpty()) metaAliasForBranch(outBranch[0], it)
-            });
+        val outOutcomes: Map<LoqiGrammarParser.BranchContext, List<Outcome<BranchResult>>> = if (outBranch.isEmpty()) {
+            outcomeOut.forEach { out -> outcomes.add(Outcome(out, DummyNode())) }
+            emptyMap()
+        } else {
+            outBranch.associateWith { branch ->
+                (getBranchResultKeys(branch) ?: throw ThisShouldNotHappen()).map { out ->
+                    Outcome(out, DummyNode()).also { metaAliasForBranch(branch, it) }
+                }
+            }
         }
 
-        checkNoDuplicateOutcomeBranches(outcomes)
-        outcomes.forEach {checkResultReachability(it)}
-        return BranchInfo(outcomeOut, thoughtBranches, outcomes)
+        val ordered = inTextualOrder(ctx.branches().branch(), outcomes, outOutcomes) { getBranchResultKeys(it) }
+        checkNoDuplicateOutcomeBranches(ordered)
+        ordered.forEach {checkResultReachability(it)}
+        return BranchInfo(outcomeOut, thoughtBranches, ordered)
     }
 
     fun visitAbstractBranches(list: List<LoqiGrammarParser.BranchContext>): List<ThoughtBranch> {
@@ -921,9 +958,11 @@ class TreeLoqiBuilder(
             throw LoqiDomainBuildException("Find action cannot have thought branches")
         }
 
+        // Исходы переиспользуются, а не копируются: на них уже могут ссылаться алиасы для `meta for`
+        @Suppress("UNCHECKED_CAST")
         val boolOutcomes = Outcomes(branches.outcomes.map { outcome ->
             if (outcome.key is Boolean) {
-                return@map Outcome(outcome.key, outcome.node)
+                return@map outcome as Outcome<Boolean>
             }
             throw LoqiDomainBuildException("Find action cannot have non-boolean outcomes")
         })
@@ -1013,7 +1052,9 @@ class TreeLoqiBuilder(
 
         decisionTree = DecisionTree(variables, varAssignments,
             visitThoughtBranch(ctx?.thoughtBranch() ?: throw ThisShouldNotHappen()))
+        // Метаданные после тела tpg описывают главную ветвь (как атрибуты корневого ThoughtBranch в XML)
         decisionTree?.fillMetadata(ctx.metadataSection())
+        decisionTree?.mainBranch?.fillMetadata(ctx.metadataSection())
 
         return decisionTree as DecisionTree
     }
@@ -1513,30 +1554,15 @@ class TreeLoqiBuilder(
     }
 
     private fun metaAliasForBranch(branch: LoqiGrammarParser.BranchContext, result: DecisionTreeElement) {
-        if (branch.arrow().ID() != null) {
-            if (branch.arrow().ID().text !in aliases) {
-                aliases[branch.arrow().ID().text] = HashSet();
-            }
-            aliases[branch.arrow().ID().text]?.add(result)
-        }
+        branch.arrow().ID()?.let { registerAlias(it.text.removeSurrounding("`"), result) }
     }
 
     private fun metaAliasForBranch(branch: LoqiGrammarParser.TupleBranchContext, result: DecisionTreeElement) {
-        if (branch.arrow().ID() != null) {
-            if (branch.arrow().ID().text !in aliases) {
-                aliases[branch.arrow().ID().text] = HashSet();
-            }
-            aliases[branch.arrow().ID().text]?.add(result)
-        }
+        branch.arrow().ID()?.let { registerAlias(it.text.removeSurrounding("`"), result) }
     }
 
     private fun metaAliasForOut(out: LoqiGrammarParser.OutContext?, result: DecisionTreeElement) {
-        if (out?.ID() != null) {
-            if (out.ID().text !in aliases) {
-                aliases[out.ID().text] = HashSet();
-            }
-            aliases[out.ID().text]?.add(result)
-        }
+        out?.ID()?.let { registerAlias(it.text.removeSurrounding("`"), result) }
     }
 
     private fun findAlias(element: DecisionTreeElement): String? {
