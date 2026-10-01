@@ -223,7 +223,7 @@ stmt: concludeBranchResult
     | cycleAggregation (AS id)?
     | findAction (AS id)?
     | question (AS id)?
-    | callStmt
+    | callStmt metadataSection?
     | mergeStmt
     ;
 
@@ -278,7 +278,8 @@ tuple: '(' exp (';' exp)* ';'? ')';
 
 tupleBranch: tuple arrow thoughtBranch;
 
-namespaceResolution: ID (':' ID)*
+// `fragment` - ключевое слово (объявление фрагмента), но в вызове `fragment:name(...)` это пространство имен
+namespaceResolution: (ID | FRAGMENT) (':' ID)*
                    ;
 
 callArgs: exp (',' exp)* ','? ;

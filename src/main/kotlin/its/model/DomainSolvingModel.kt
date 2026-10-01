@@ -2,6 +2,8 @@ package its.model
 
 import its.model.Utils.plus
 import its.model.definition.DomainModel
+import its.model.definition.DomainValidationResults
+import its.model.definition.UnknownDomainDefinitionException
 import its.model.definition.compat.DomainDictionariesRDFBuilder
 import its.model.definition.loqi.DomainLoqiBuilder
 import its.model.definition.loqi.DomainLoqiWriter
@@ -188,9 +190,11 @@ class DomainSolvingModel(
         tagsData.keys.forEach { tagName ->
             val mergedTagDomain = getMergedTagDomain(tagName)
             mergedTagDomain.validateAndThrow() //Деревья должны корректно работать со всеми теговыми моделями
+            validateLeafClassesDefineAllValues(mergedTagDomain, tagName)
             decisionTrees.values.forEach { it.validate(mergedTagDomain) }
         }
         if(tagsData.isEmpty()){
+            validateLeafClassesDefineAllValues(domainModel, null)
             decisionTrees.values.forEach { it.validate(domainModel) }
         }
         if (!debug) {
@@ -208,6 +212,21 @@ class DomainSolvingModel(
             }
         }
         return this
+    }
+
+    // Объекты появляются только в ситуациях, поэтому в модели конкретным считается лист иерархии классов.
+    // Базовая модель при наличии тегов так не проверяется: её листья дополняются классами тегов.
+    private fun validateLeafClassesDefineAllValues(domain: DomainModel, tagName: String?) {
+        val results = DomainValidationResults()
+        val parentNames = domain.classes.mapNotNullTo(HashSet()) { it.parentName }
+        domain.classes
+            .filter { it.name !in parentNames }
+            .forEach { it.definedPropertyValues.validateAllValuesDefined(results) }
+        results.throwInvalid()
+        val undefined = results.unknowns.firstOrNull() ?: return
+        throw UnknownDomainDefinitionException(
+            if (tagName == null) undefined.message!! else "In tag '$tagName': ${undefined.message}"
+        )
     }
 
     /**

@@ -238,21 +238,17 @@ class DomainLoqiBuilder private constructor(
         val ref = ClassRef(ctx.id().getName())
         val syntheticClass = syntheticClass(ref.className) //Костыль, потому что стейтменты не существует без владельца
 
-        ctx.propertyValueStatement().forEach { propertyValue ->
+        val values = ctx.propertyValueStatement().mapTo(mutableListOf()) { propertyValue ->
             val name = propertyValue.id().getName()
             val paramsValues = getParamsValues(propertyValue.paramsValues())
             val value = propertyValue.value().getTypeAndValue().value
-            domainOpAt(propertyValue.start.line) {
-                syntheticClass.definedPropertyValues.add(
-                    ClassPropertyValueStatement(syntheticClass, name, paramsValues, value)
-                )
-            }
+            ClassPropertyValueStatement(syntheticClass, name, paramsValues, value)
         }
 
-        if (syntheticClass.definedPropertyValues.isEmpty()) return //пустые стейтменты игнорируем
+        if (values.isEmpty()) return //пустые стейтменты игнорируем
 
         domainOpAt(ctx.id().start.line) {
-            domainModel.separateClassPropertyValues.add(ref, syntheticClass.definedPropertyValues)
+            domainModel.separateClassPropertyValues.add(ref, values)
         }
     }
 

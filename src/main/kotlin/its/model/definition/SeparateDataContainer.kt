@@ -75,23 +75,33 @@ sealed class SeparateDataContainer<Key : DomainRef<*>, Value : Any>(
     override fun isEmpty() = map.isEmpty()
 }
 
+/**
+ * Значения свойств, заданные отдельно от класса; проверяются, когда класс находится и они к нему прикрепляются
+ */
 class SeparateClassPropertyValuesContainer(
     domainModel: DomainModel
-) : SeparateDataContainer<ClassRef, ClassPropertyValueStatements>(domainModel) {
+) : SeparateDataContainer<ClassRef, MutableList<ClassPropertyValueStatement>>(domainModel) {
 
     override fun mergeValues(
-        old: ClassPropertyValueStatements,
-        new: ClassPropertyValueStatements
-    ): ClassPropertyValueStatements {
+        old: MutableList<ClassPropertyValueStatement>,
+        new: MutableList<ClassPropertyValueStatement>
+    ): MutableList<ClassPropertyValueStatement> {
         return old.also { it.addAll(new) }
     }
 
-    override fun subtractValues(existing: ClassPropertyValueStatements, other: ClassPropertyValueStatements): Boolean {
-        existing.subtract(other)
+    override fun subtractValues(
+        existing: MutableList<ClassPropertyValueStatement>,
+        other: MutableList<ClassPropertyValueStatement>
+    ): Boolean {
+        existing.removeAll { statement -> other.any { it.definesSameValueAs(statement) } }
         return existing.isEmpty()
     }
 
-    override fun attachValue(domainDef: DomainDef<*>, value: ClassPropertyValueStatements) {
+    // Владельцы отдельных значений - временные классы, поэтому сравнивается только само утверждение.
+    private fun ClassPropertyValueStatement.definesSameValueAs(other: ClassPropertyValueStatement) =
+        propertyName == other.propertyName && paramsValues == other.paramsValues && value == other.value
+
+    override fun attachValue(domainDef: DomainDef<*>, value: MutableList<ClassPropertyValueStatement>) {
         if (domainDef !is ClassDef) return
         domainDef.definedPropertyValues.addAll(value)
     }

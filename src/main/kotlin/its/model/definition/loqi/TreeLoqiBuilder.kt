@@ -5,6 +5,7 @@ import its.model.ValueTuple
 import its.model.definition.*
 import its.model.definition.loqi.LoqiGrammarParser.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
+import its.model.definition.loqi.LoqiStringUtils.getParts
 import its.model.definition.loqi.tree.FragmentDef
 import its.model.definition.loqi.tree.LambdaDef
 import its.model.definition.procedures.*
@@ -31,7 +32,9 @@ class TreeLoqiBuilder(
      * пересоединить к следующему statement при сборке окружающей ThoughtBranch.
      */
     private val outMap: MutableMap<DecisionTreeElement, List<Any>> = mutableMapOf()
-    private val aliases: MutableMap<String, MutableSet<DecisionTreeElement>> = mutableMapOf()
+    // Для каждого элемента хранится переименование переменных там, где он объявлен: `meta for` применяется
+    // после сборки, когда стек встраивания фрагментов уже пуст.
+    private val aliases: MutableMap<String, MutableMap<DecisionTreeElement, Map<String, String>>> = mutableMapOf()
     private val fragments: MutableMap<String, RegisteredFragment> = mutableMapOf()
     private val lambdas: MutableMap<String, RegisteredLambda> = mutableMapOf()
 
@@ -82,10 +85,13 @@ class TreeLoqiBuilder(
         val body: ThoughtBranchContext,
     )
 
-    private data class FragmentInliningContext(
+    private class FragmentInliningContext(
         val fragmentName: String,
         val variableMapping: Map<String, String>,
-    )
+    ) {
+        // Выводы тела, включая тела вложенных вызовов, но не подставленные из места вызова.
+        val conclusions: MutableList<DecisionTreeNode> = mutableListOf()
+    }
 
     /*
      * Перенаправления при вызове фрагмента:
@@ -174,13 +180,19 @@ class TreeLoqiBuilder(
         return visitCallStmtAsBuiltStatement(ctx).start
     }
 
-    private fun visitCallStmtAsBuiltStatement(ctx: LoqiGrammarParser.CallStmtContext): BuiltStatement {
+    private fun visitCallStmtAsBuiltStatement(
+        ctx: LoqiGrammarParser.CallStmtContext,
+        callMetadata: MetadataSectionContext? = null,
+    ): BuiltStatement {
         resolveFragment(ctx.namespaceResolution())?.let { fragment ->
-            return inlineFragment(fragment, ctx)
+            return inlineFragment(fragment, ctx, callMetadata)
         }
 
         if (ctx.callRedirBranches() != null) {
             throw LoqiDomainBuildException(ctx.start.line, "Call result redirection is supported only for fragments")
+        }
+        if (callMetadata != null) {
+            throw LoqiDomainBuildException(ctx.start.line, "Call metadata is supported only for fragments")
         }
 
         val procedure = resolveProcedure(ctx.namespaceResolution())
@@ -283,7 +295,7 @@ class TreeLoqiBuilder(
                     node.asBuiltStatement()
                 }
             } else if (child is LoqiGrammarParser.CallStmtContext) {
-                domainOpAt(ctx.start.line) { visitCallStmtAsBuiltStatement(child) }
+                domainOpAt(ctx.start.line) { visitCallStmtAsBuiltStatement(child, ctx.metadataSection()) }
             } else if (child is LoqiGrammarParser.MergeStmtContext) {
                 domainOpAt(ctx.start.line) { visitMergeStmtAsBuiltStatement(child, continuationAfterStmt) }
             } else {
@@ -369,11 +381,7 @@ class TreeLoqiBuilder(
                     val index = prevTail.outcomes.indexOf(outcome)
                     prevTail.outcomes[index] = Outcome(outcome.key, next)
                         .also {checkResultReachability(it)}
-                        .also {
-                            val alias = findAlias(outcome)
-                            aliases[alias]?.remove(outcome)
-                            aliases[alias]?.add(it)
-                        }
+                        .also { replaceAlias(outcome, it) }
                 }
             }
         } else {
@@ -429,7 +437,6 @@ class TreeLoqiBuilder(
                 return replacement
             }
             result = BranchResultNode(branchResult, actionExp);
-            result.fillMetadata(ctx.metadataSection())
         } else {
             val call = visitCallStmt(ctx.callStmt());
             if (call !is ProcedureCallNode) {
@@ -437,6 +444,8 @@ class TreeLoqiBuilder(
             }
             result = BranchResultRedirectingNode(call.asExpr(), actionExp);
         }
+        result.fillMetadata(ctx.metadataSection())
+        fragmentInliningStack.forEach { it.conclusions.add(result) }
         result.addDebugLine(ctx.start.line)
         if (ctx.id() != null) {
             registerAlias(ctx.id().getName(), result)
@@ -811,10 +820,17 @@ class TreeLoqiBuilder(
 
     private fun registerAlias(name: String, owner: DecisionTreeElement) {
         if (name == "_") return
-        if (name !in aliases) {
-            aliases[name] = HashSet()
+        aliases.getOrPut(name) { mutableMapOf() }[owner] = currentVarMapping()
+    }
+
+    // Имена с `_` в начале — служебные метки только для `meta for` (их порождает и TreeLoqiWriter), не alias.
+    private fun writeAliasesToMetadata() {
+        for ((name, elements) in aliases) {
+            if (name.startsWith("_")) continue
+            for (element in elements.keys) {
+                if (!element.metadata.containsUnlocalized("alias")) element.metadata.add("alias", name)
+            }
         }
-        aliases[name]?.add(owner)
     }
 
     fun parseAggregationMethod(token: String): AggregationMethod {
@@ -996,6 +1012,9 @@ class TreeLoqiBuilder(
         }
 
         val tree = visitTreeDecl(ctx.treeDecl());
+        // До `meta for`, чтобы явный alias оттуда перекрыл имя. Элементы подменяются по ходу сборки,
+        // поэтому имя пишется по итоговому реестру, а не при регистрации.
+        writeAliasesToMetadata()
         val helpers = ctx.treeDeclHelpers();
         helpers.forEach { helper ->
             helper.metaDecl()?.let { applyMetadataDecl(it) }
@@ -1004,7 +1023,7 @@ class TreeLoqiBuilder(
     }
 
     private fun resolveProcedure(id: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
-        val resolutions = id.ID().map { it.text.removeSurrounding("`") }
+        val resolutions = id.getParts()
         if (resolutions.isEmpty()) {
             return null
         }
@@ -1012,7 +1031,7 @@ class TreeLoqiBuilder(
     }
 
     private fun resolveFragment(id: LoqiGrammarParser.NamespaceResolutionContext): RegisteredFragment? {
-        val resolutions = id.ID().map { it.text.removeSurrounding("`") }
+        val resolutions = id.getParts()
         if (resolutions.isEmpty()) {
             return null
         }
@@ -1025,8 +1044,8 @@ class TreeLoqiBuilder(
     fun applyMetadataDecl(meta: LoqiGrammarParser.MetaDeclContext) {
         val id = meta.id().getName()
         if (id in aliases) {
-            for (node in aliases[id]!!) {
-                node.fillMetadata(meta.metadataSection())
+            for ((node, varMapping) in aliases[id]!!) {
+                node.metadata.fill(meta.metadataSection(), varMapping)
             }
         } else {
             throw LoqiDomainBuildException("Unused metadata with identifier $id detected")
@@ -1086,7 +1105,7 @@ class TreeLoqiBuilder(
         return this
     }
 
-    private fun MetaData.fill(ctx: MetadataSectionContext?) {
+    private fun MetaData.fill(ctx: MetadataSectionContext?, varMapping: Map<String, String> = currentVarMapping()) {
         if (ctx == null) return
         for (metadataPropertyDecl in ctx.metadataPropertyDecl()) {
             val locCode =
@@ -1097,9 +1116,21 @@ class TreeLoqiBuilder(
             val propName = metadataPropertyDecl.id().last().getName()
 
             val value = metadataPropertyDecl.value().getTypeAndValue().value
+            val renamedValue = if (value is String) MetadataTemplates.renameTreeVariables(value, varMapping) else value
 
-            this.add(locCode, propName, value)
+            this.add(locCode, propName, renamedValue)
         }
+    }
+
+    // Свойство, заданное и во фрагменте, и у вызова, — ошибка: иначе одно из значений молча потерялось бы.
+    private fun MetaData.addCallMetadata(callMetadata: MetaData, fragmentName: String, callLine: Int) {
+        callMetadata.entries.map { it.propertyName }.firstOrNull { containsAny(it) }?.let { propertyName ->
+            throw LoqiDomainBuildException(
+                callLine,
+                "Metadata property `$propertyName` is set both in fragment `$fragmentName` and at its call"
+            )
+        }
+        addAll(callMetadata)
     }
 
     private fun IdContext.getName(): String {
@@ -1174,7 +1205,11 @@ class TreeLoqiBuilder(
      * готовое поддерево. Так metadata, aliases и последующие перенаправления
      * остаются локальными для места вызова.
      */
-    private fun inlineFragment(fragment: RegisteredFragment, callCtx: CallStmtContext): BuiltStatement {
+    private fun inlineFragment(
+        fragment: RegisteredFragment,
+        callCtx: CallStmtContext,
+        callMetadataCtx: MetadataSectionContext?,
+    ): BuiltStatement {
         val fragmentName = fragment.definition.qualifiedName
         if (fragmentName in fragmentCallStack) {
             val cycle = (fragmentCallStack + fragmentName).joinToString(" -> ")
@@ -1187,12 +1222,18 @@ class TreeLoqiBuilder(
         val variableMapping = fragment.definition.arguments.zip(actualArguments).associate { (formal, actual) ->
             formal.name to (actual as DecisionTreeVarLiteral).name
         }
+        // Шаблоны метаданных вызова написаны в его области видимости, поэтому заполняются до входа во фрагмент.
+        val callMetadata = MetaData().also { it.fill(callMetadataCtx) }
 
+        val inliningContext = FragmentInliningContext(fragmentName, variableMapping)
         fragmentCallStack.addLast(fragmentName)
-        fragmentInliningStack.addLast(FragmentInliningContext(fragmentName, variableMapping))
+        fragmentInliningStack.addLast(inliningContext)
         fragmentResultReplacementStack.addLast(redirects.replacements)
         try {
             val branch = buildThoughtBranch(fragment.body, leaveTailOpen = true)
+            inliningContext.conclusions.forEach {
+                it.metadata.addCallMetadata(callMetadata, fragment.definition.name, callCtx.start.line)
+            }
             val statement = BuiltStatement(branch.branch.start, branch.tail)
             statement.openFragmentExits = collectOpenFragmentExits(statement, redirects.outResults, callCtx.start.line)
             return statement
@@ -1565,18 +1606,20 @@ class TreeLoqiBuilder(
         out?.ID()?.let { registerAlias(it.text.removeSurrounding("`"), result) }
     }
 
-    private fun findAlias(element: DecisionTreeElement): String? {
-        return aliases.entries
-            .firstOrNull { element in it.value }
-            ?.key
-    }
-
     private fun replaceAlias(oldElement: DecisionTreeElement, newElement: DecisionTreeElement) {
         aliases.values.forEach { elements ->
-            if (oldElement in elements) {
-                elements.remove(oldElement)
-                elements.add(newElement)
-            }
+            elements.remove(oldElement)?.let { varMapping -> elements[newElement] = varMapping }
+        }
+    }
+
+    /*
+     * Итоговое переименование переменных в текущей точке встраивания (внутренний вызов перекрывает внешние),
+     * то же, что делает resolveDecisionTreeVarName.
+     */
+    private fun currentVarMapping(): Map<String, String> {
+        if (fragmentInliningStack.isEmpty()) return emptyMap()
+        return HashMap<String, String>().also { mapping ->
+            fragmentInliningStack.forEach { mapping.putAll(it.variableMapping) }
         }
     }
 

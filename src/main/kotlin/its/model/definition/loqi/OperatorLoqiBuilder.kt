@@ -6,6 +6,7 @@ import its.model.RelationshipLinkBlueprint
 import its.model.TypedVariable
 import its.model.definition.*
 import its.model.definition.loqi.LoqiStringUtils.extractEscapes
+import its.model.definition.loqi.LoqiStringUtils.getParts
 import its.model.definition.loqi.OperatorLoqiBuilder.Companion.buildExp
 import its.model.definition.procedures.BuiltinProcedureRegistry
 import its.model.definition.procedures.CallableProcedureDef
@@ -351,7 +352,7 @@ class OperatorLoqiBuilder(
         ctx: LoqiGrammarParser.NamespaceResolutionContext,
         arity: Int,
     ): RegisteredLambda? {
-        val parts = ctx.ID().map { it.getName() }
+        val parts = ctx.getParts()
         if (parts.isEmpty()) {
             return null
         }
@@ -391,7 +392,7 @@ class OperatorLoqiBuilder(
     }
 
     private fun resolveCallProcedure(ctx: LoqiGrammarParser.NamespaceResolutionContext): CallableProcedureDef? {
-        val parts = ctx.ID().map { it.getName() }
+        val parts = ctx.getParts()
         if (parts.isEmpty()) {
             return null
         }

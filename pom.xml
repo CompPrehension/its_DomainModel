@@ -6,7 +6,7 @@
 
     <artifactId>its_DomainModel</artifactId>
     <groupId>com.github.CompPrehension</groupId>
-    <version>3.0.0-rc.4</version>
+    <version>3.0.0-rc.5</version>
     <packaging>jar</packaging>
 
     <name>DomainModel</name>

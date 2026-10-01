@@ -27,6 +27,12 @@ internal object LoqiStringUtils {
         return if (!this.isSimpleLoqiName()) "`$this`" else this
     }
 
+    /**
+     * Части квалифицированного имени вызова: пространства имен и имя процедуры
+     */
+    fun LoqiGrammarParser.NamespaceResolutionContext.getParts(): List<String> =
+        (listOfNotNull(FRAGMENT()) + ID()).map { it.text.removeSurrounding("`") }
+
 
     val knownSequences = listOf(
         "\\" to "\\\\", //Важно что просто слеши заменяются первыми

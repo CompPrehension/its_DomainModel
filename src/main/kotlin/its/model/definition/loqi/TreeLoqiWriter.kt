@@ -25,7 +25,9 @@ class TreeLoqiWriter private constructor(
 ) : LinkNodeBehaviour<Unit>, DecisionTreeBehaviour<Unit> {
 
     private val pendingMetaFor = mutableListOf<Pair<String, MetaData>>()
-    private val syntheticAliases = java.util.IdentityHashMap<MetaData, String>()
+    private val linkAliases = java.util.IdentityHashMap<MetaData, String>()
+    private val metadataByLinkAlias = mutableMapOf<String, MetaData>()
+    private var syntheticAliasCount = 0
 
     companion object {
         private fun Operator.loqiCompact(): String = description
@@ -401,7 +403,12 @@ class TreeLoqiWriter private constructor(
     private fun queueNodeMeta(owner: MetaOwner) {
         val linkAlias = owner.metadata.loqiLinkAlias() ?: return
         val copy = MetaData()
-        copy.addAll(owner.metadata)
+        for ((locCode, propertyName, value) in owner.metadata.entries) {
+            // TreeLoqiBuilder восстанавливает такой alias из самой метки.
+            if (locCode == null && propertyName == "alias" && value == linkAlias) continue
+            copy.add(locCode, propertyName, value)
+        }
+        if (copy.isEmpty()) return
         pendingMetaFor.add(linkAlias to copy)
     }
 
@@ -426,15 +433,25 @@ class TreeLoqiWriter private constructor(
 
     /**
      * LOQI-safe alias for `as`, `meta for`, `-[id]->` and `out[id]` (the latter only in the `ask (...) out[id] ... else` form).
-     * Human-readable XML aliases fall back to n{TEMPLATING_ID}; metadata without either still has to reach
+     * Human-readable XML aliases fall back to _n{TEMPLATING_ID}; metadata without either still has to reach
      * a `meta for` declaration, so it gets a synthetic handle (the original `alias` value stays inside the metadata).
+     * Synthetic handles start with `_`, so TreeLoqiBuilder does not turn them into an `alias`.
+     * One `meta for` serves all elements with the same handle, so elements whose metadata differ (e.g. copies of
+     * an inlined fragment) cannot share it, and the later ones get a synthetic handle.
      */
     private fun MetaData.loqiLinkAlias(): String? {
-        val alias = getString("alias")
-        if (!alias.isNullOrBlank() && alias.none { it.isWhitespace() }) return alias
-        getString("TEMPLATING_ID")?.let { return "n$it" }
         if (isEmpty()) return null
-        return syntheticAliases.getOrPut(this) { "_m${syntheticAliases.size + 1}" }
+        linkAliases[this]?.let { return it }
+        val alias = getString("alias")
+            ?.takeIf { it.isNotBlank() && it.none(Char::isWhitespace) && !it.startsWith("_") }
+        val preferred = alias ?: getString("TEMPLATING_ID")?.let { "_n$it" }
+        val claimedBy = preferred?.let { metadataByLinkAlias[it] }
+        val linkAlias =
+            if (preferred != null && (claimedBy == null || claimedBy.entries == entries)) preferred
+            else "_m${++syntheticAliasCount}"
+        linkAliases[this] = linkAlias
+        metadataByLinkAlias.putIfAbsent(linkAlias, this)
+        return linkAlias
     }
 
     private fun MetaData.writeMetadataBlock(writer: IndentWriter, terminateMetaDecl: Boolean = false) {

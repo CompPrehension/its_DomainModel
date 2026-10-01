@@ -242,9 +242,15 @@ class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
             }
         }
 
-        //Определяет все нужные свойства для всех комбинаций параметров
         if (owner is ObjectDef) return //Пока что решили, что объекты не проверяются, и кидается ошибка в рантайме
         if (owner is ClassDef && !owner.isConcrete) return
+        validateAllValuesDefined(results)
+    }
+
+    /**
+     * Валидация - владелец (с учетом наследования) определяет все нужные свойства для всех комбинаций параметров
+     */
+    internal fun validateAllValuesDefined(results: DomainValidationResults) {
         val topDownLineage = owner.getKnownInheritanceLineage(results).reversed()
         val undefinedPropertiesAndParams = mutableSetOf<Pair<PropertyDef, Map<String, Any>>>()
         for (clazz in topDownLineage) {
@@ -272,7 +278,8 @@ class PropertyValueStatements<Owner : ClassInheritorDef<Owner>>(
         for ((property, paramsValueMap) in undefinedPropertiesAndParams) {
             results.checkKnown(
                 get(property.name, paramsValueMap) != null,
-                "${owner.description} does not define a value for ${property.description} with params $paramsValueMap"
+                "${owner.description} does not define a value for ${property.description}" +
+                        if (paramsValueMap.isEmpty()) "" else " with params $paramsValueMap"
             )
         }
     }

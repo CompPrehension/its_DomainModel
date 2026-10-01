@@ -8,7 +8,8 @@ package mp.utils
  */
 fun <T> getCombinations(possibilities: List<Collection<T>>): List<MutableList<T>> {
     if (possibilities.isEmpty()) {
-        return ArrayList()
+        // Ровно одна комбинация — пустая: иначе свойство без параметров выпадает из перебора.
+        return arrayListOf(ArrayList())
     }
     val firstPossibility: Collection<T> = possibilities.first()
     if (possibilities.size == 1) {
