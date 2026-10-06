@@ -35,7 +35,7 @@ class GetExtreme(
 ) : Operator() {
 
     override val children: List<Operator>
-        get() = listOf(conditionExpr)
+        get() = listOf(conditionExpr, extremeConditionExpr)
 
     override fun validateAndGetType(
         domainModel: DomainModel,

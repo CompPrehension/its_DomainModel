@@ -27,7 +27,13 @@ class GetPropertyValue(
 ) : Operator() {
 
     override val children: List<Operator>
-        get() = listOf(objectExpr).plus(paramsValues.getExprList())
+        get() {
+            val paramsExprs = paramsValues.getExprList()
+            return buildList(1 + paramsExprs.size) {
+                add(objectExpr)
+                addAll(paramsExprs)
+            }
+        }
 
     override fun validateAndGetType(
         domainModel: DomainModel,

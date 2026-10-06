@@ -1,5 +1,6 @@
 package its.model.definition
 
+import its.model.hashOf
 import its.model.definition.types.Comparison
 import its.model.definition.types.EnumValue
 import its.model.definition.types.OptionalBool
@@ -79,6 +80,6 @@ class EnumRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, enumName)
+        return hashOf(javaClass, enumName)
     }
 }

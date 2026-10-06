@@ -1,5 +1,6 @@
 package its.model.definition
 
+import its.model.hashOf
 import java.util.*
 
 /**
@@ -262,10 +263,14 @@ class RelationshipDef(
      * Является ли отношение неупорядоченным
      */
     val isUnordered: Boolean
-        get() = objectClassNames.toSet().size == 1 && !(kind is DependantRelationshipKind && kind.type in setOf(
-            DependantRelationshipKind.Type.CLOSER,
-            DependantRelationshipKind.Type.FURTHER,
-        ))
+        get() {
+            val firstClassName = objectClassNames.firstOrNull() ?: return false
+            if (objectClassNames.any { it != firstClassName }) return false
+            return !(kind is DependantRelationshipKind && (
+                    kind.type == DependantRelationshipKind.Type.CLOSER
+                            || kind.type == DependantRelationshipKind.Type.FURTHER
+                    ))
+        }
 
     /**
      * Отношение, от которого зависит текущее (если текущее имеет тип [DependantRelationshipKind])
@@ -330,6 +335,6 @@ class RelationshipRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, className, relationshipName)
+        return hashOf(javaClass, className, relationshipName)
     }
 }

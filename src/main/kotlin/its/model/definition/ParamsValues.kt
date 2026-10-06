@@ -79,9 +79,7 @@ class OrderedParamsValues(
     val values: List<Any>,
 ) : ParamsValues() {
     override fun asMap(paramsDecl: ParamsDecl): Map<String, Any> {
-        return values.mapIndexed { index, value ->
-            paramsDecl[index].name to value
-        }.toMap()
+        return orderedValuesAsMap(values, paramsDecl)
     }
 
     override fun isEmpty() = values.isEmpty()
@@ -176,4 +174,20 @@ class NamedParamsValues(
     }
 
 
+}
+
+/**
+ * Сопоставить упорядоченные значения [values] параметрам [paramsDecl] по позиции.
+ * Результат совпадает с `values.mapIndexed { i, v -> paramsDecl[i].name to v }.toMap()`, но без промежуточного списка пар
+ */
+internal fun <V : Any> orderedValuesAsMap(values: List<V>, paramsDecl: ParamsDecl): Map<String, V> {
+    return when (values.size) {
+        0 -> emptyMap()
+        1 -> java.util.Collections.singletonMap(paramsDecl[0].name, values[0])
+        else -> {
+            val result = LinkedHashMap<String, V>(values.size * 2)
+            values.forEachIndexed { index, value -> result[paramsDecl[index].name] = value }
+            result
+        }
+    }
 }

@@ -1,7 +1,7 @@
 package its.model.definition
 
+import its.model.hashOf
 import mp.utils.findCycles
-import java.util.*
 
 /**
  * Модель объекта в домене ([DomainModel])
@@ -80,7 +80,7 @@ class ObjectDef(
     }
 
     fun hasRelationshipLink(relationshipName: String): Boolean {
-        return relationshipLinks.stream().anyMatch { link -> link.relationshipName == relationshipName };
+        return relationshipLinks.any { link -> link.relationshipName == relationshipName }
     }
 
     /**
@@ -230,6 +230,6 @@ class ObjectRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, objectName)
+        return hashOf(javaClass, objectName)
     }
 }

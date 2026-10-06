@@ -10,7 +10,7 @@ import its.model.expressions.visitors.OperatorBehaviour
 sealed class Literal : Operator() {
 
     override val children: List<Operator>
-        get() = ArrayList()
+        get() = emptyList()
 
 
     abstract fun <I> use(behaviour: LiteralBehaviour<I>): I

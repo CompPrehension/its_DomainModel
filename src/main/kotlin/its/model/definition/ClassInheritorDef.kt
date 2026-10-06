@@ -204,10 +204,9 @@ sealed class ClassInheritorDef<Self : ClassInheritorDef<Self>> : DomainDefWithMe
      * @throws DomainNonConformityException если такого свойства не существует
      */
     fun getPropertyValue(propertyName: String, paramsValuesMap: Map<String, Any> = mapOf()): Any {
-        checkConforming(
-            findPropertyDef(propertyName, DomainValidationResultsThrowImmediately()) != null,
-            "No property $propertyName exists for $description"
-        )
+        if (findPropertyDef(propertyName) == null) {
+            nonConforming("No property $propertyName exists for $description")
+        }
         val defined = definedPropertyValues.get(propertyName, paramsValuesMap)
         if (defined != null) return defined.value
         for (clazz in inheritedData().lineage) {

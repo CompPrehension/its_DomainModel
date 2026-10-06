@@ -131,7 +131,7 @@ internal fun checkKnown(condition: Boolean, message: String) {
     }
 }
 
-internal fun unknown(message: String) {
+internal fun unknown(message: String): Nothing {
     throw UnknownDomainDefinitionException(message).fillInStackTrace()
 }
 

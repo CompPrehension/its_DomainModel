@@ -26,7 +26,7 @@ class IfThen(
     val elseExpr: Operator? = null,
 ) : Operator() {
     override val children: List<Operator>
-        get() = listOf(conditionExpr, thenExpr)
+        get() = listOfNotNull(conditionExpr, thenExpr, elseExpr)
 
     override fun validateAndGetType(
         domainModel: DomainModel,

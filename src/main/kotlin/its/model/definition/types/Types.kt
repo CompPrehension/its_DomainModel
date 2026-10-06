@@ -217,7 +217,7 @@ sealed class DomainRefType<Value : Any, Ref : DomainRef<Def>, Def : DomainDef<De
     /**
      * Найти соответствующее типу определение в домене
      */
-    fun findIn(domainModel: DomainModel): Def = reference.findInOrUnkown(domainModel)
+    fun findIn(domainModel: DomainModel): Def = reference.findInOrUnknown(domainModel)
 
     override fun fits(value: Any, inDomainModel: DomainModel): Boolean {
         if (!this.exists(inDomainModel)) return false

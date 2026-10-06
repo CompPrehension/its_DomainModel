@@ -118,12 +118,7 @@ sealed interface DomainRef<Def : DomainDef<Def>> {
      */
     fun findIn(domainModel: DomainModel): Def?
 
-    fun findInOrUnkown(domainModel: DomainModel): Def {
-        val found = findIn(domainModel)
-        checkKnown(
-            found != null,
-            "No definition for reference '$this' found in domain"
-        )
-        return found!!
+    fun findInOrUnknown(domainModel: DomainModel): Def {
+        return findIn(domainModel) ?: unknown("No definition for reference '$this' found in domain")
     }
 }

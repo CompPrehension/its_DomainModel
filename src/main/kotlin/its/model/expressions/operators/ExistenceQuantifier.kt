@@ -29,7 +29,7 @@ class ExistenceQuantifier(
 ) : Operator() {
 
     override val children: List<Operator>
-        get() = listOf(selectorExpr, conditionExpr).filterNotNull()
+        get() = listOfNotNull(selectorExpr, conditionExpr)
 
     override fun validateAndGetType(
         domainModel: DomainModel,

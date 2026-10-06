@@ -3,6 +3,7 @@ package its.model.expressions.utils
 import its.model.definition.DomainModel
 import its.model.definition.ParamsDecl
 import its.model.definition.ParamsValues
+import its.model.definition.orderedValuesAsMap
 import its.model.expressions.ExpressionContext
 import its.model.expressions.ExpressionValidationResults
 import its.model.expressions.Operator
@@ -61,9 +62,7 @@ class OrderedParamsValuesExprList(
     val values: List<Operator>,
 ) : ParamsValuesExprList() {
     override fun asMap(paramsDecl: ParamsDecl): Map<String, Operator> {
-        return values.mapIndexed { index, value ->
-            paramsDecl[index].name to value
-        }.toMap()
+        return orderedValuesAsMap(values, paramsDecl)
     }
 
     override fun getExprList(): List<Operator> {

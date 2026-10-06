@@ -1,5 +1,6 @@
 package its.model.definition
 
+import its.model.hashOf
 import java.util.*
 
 /**
@@ -187,6 +188,6 @@ class ClassRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, className)
+        return hashOf(javaClass, className)
     }
 }

@@ -1,6 +1,6 @@
 package its.model.expressions.literals
 
-import java.util.*
+import its.model.hashOf
 
 /**
  * Ссылочный литерал
@@ -21,6 +21,6 @@ abstract class ReferenceLiteral(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, name)
+        return hashOf(javaClass, name)
     }
 }

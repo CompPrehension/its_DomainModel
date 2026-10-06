@@ -99,7 +99,14 @@ class RelationshipLinkStatement(
         get() = getKnownRelationship(DomainValidationResultsThrowImmediately())!!
 
     val objects: List<ObjectDef>
-        get() = getKnownObjects(DomainValidationResultsThrowImmediately()).requireNoNulls()
+        get() {
+            val objectContainer = domainModel.objects
+            return objectNames.map { objectName ->
+                objectContainer.get(objectName) ?: unknown(
+                    "No object definition '$objectName' found, while $description uses it as one of its objects"
+                )
+            }
+        }
 }
 
 

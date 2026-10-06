@@ -1,5 +1,6 @@
 package its.model.definition
 
+import its.model.hashOf
 import its.model.definition.types.EnumType
 import its.model.definition.types.Type
 import java.util.*
@@ -129,6 +130,6 @@ class PropertyRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, className, propertyName)
+        return hashOf(javaClass, className, propertyName)
     }
 }

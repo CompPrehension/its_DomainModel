@@ -160,7 +160,7 @@ class DomainDictionariesBuilder private constructor(
         val declaringClassNames = csvRow[4].split(LIST_ITEMS_SEPARATOR)
         for (declaringClassName in declaringClassNames) {
             val declaringClass = domainOpAt(rowNum, dictName) {
-                ClassRef(declaringClassName).findInOrUnkown(domainModel)
+                ClassRef(declaringClassName).findInOrUnknown(domainModel)
             } as ClassDef
 
             domainOpAt(rowNum, dictName) {
@@ -196,7 +196,7 @@ class DomainDictionariesBuilder private constructor(
         val kind = BaseRelationshipKind(scaleType, quantifier)
 
         val subjectClass =
-            domainOpAt(rowNum, dictName) { ClassRef(subjectClassName).findInOrUnkown(domainModel) } as ClassDef
+            domainOpAt(rowNum, dictName) { ClassRef(subjectClassName).findInOrUnknown(domainModel) } as ClassDef
         domainOpAt(rowNum, dictName) {
             subjectClass.declaredRelationships.add(RelationshipDef(subjectClassName, name, objectClassNames, kind))
         }

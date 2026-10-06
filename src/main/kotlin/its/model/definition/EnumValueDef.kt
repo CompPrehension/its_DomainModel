@@ -1,6 +1,6 @@
 package its.model.definition
 
-import java.util.*
+import its.model.hashOf
 
 /**
  * Одно из значений перечисления [EnumDef]
@@ -55,6 +55,6 @@ class EnumValueRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, enumName, valueName)
+        return hashOf(javaClass, enumName, valueName)
     }
 }

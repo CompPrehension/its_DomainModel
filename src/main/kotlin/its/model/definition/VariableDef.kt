@@ -1,6 +1,6 @@
 package its.model.definition
 
-import java.util.*
+import its.model.hashOf
 
 class VariableDef(
     override val name: String,
@@ -51,6 +51,6 @@ class VariableRef(
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(this::class, varName)
+        return hashOf(javaClass, varName)
     }
 }

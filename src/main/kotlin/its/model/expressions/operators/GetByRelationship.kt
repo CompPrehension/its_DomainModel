@@ -25,7 +25,13 @@ class GetByRelationship(
 ) : Operator() {
 
     override val children: List<Operator>
-        get() = listOf(subjectExpr).plus(paramsValues.getExprList())
+        get() {
+            val paramsExprs = paramsValues.getExprList()
+            return buildList(1 + paramsExprs.size) {
+                add(subjectExpr)
+                addAll(paramsExprs)
+            }
+        }
 
     override fun validateAndGetType(
         domainModel: DomainModel,

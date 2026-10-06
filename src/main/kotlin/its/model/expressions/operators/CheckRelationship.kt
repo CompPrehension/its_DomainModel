@@ -29,7 +29,14 @@ class CheckRelationship(
 ) : Operator() {
 
     override val children: List<Operator>
-        get() = listOf(subjectExpr).plus(objectExprs).plus(paramsValues.getExprList())
+        get() {
+            val paramsExprs = paramsValues.getExprList()
+            return buildList(1 + objectExprs.size + paramsExprs.size) {
+                add(subjectExpr)
+                addAll(objectExprs)
+                addAll(paramsExprs)
+            }
+        }
 
     override fun validateAndGetType(
         domainModel: DomainModel,
@@ -119,8 +126,10 @@ class CheckRelationship(
     /**
      * Получить отношение с учетом проекции
      */
-    fun getRelationship(subjClass: ClassDef) =
-        getRelationship(subjClass, ExpressionValidationResults(true))!!
+    fun getRelationship(subjClass: ClassDef): RelationshipDef =
+        //Частый случай - отношение объявлено у самого класса: не создаем результаты валидации
+        subjClass.findRelationshipDef(relationshipName)
+            ?: getRelationship(subjClass, ExpressionValidationResults(true))!!
 
     override fun <I> use(behaviour: OperatorBehaviour<I>): I {
         return behaviour.process(this)
