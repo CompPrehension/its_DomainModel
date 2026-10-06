@@ -6,9 +6,9 @@ package its.model.nodes
 enum class AggregationMethod {
     /**
      * Одновременные проверки по логическому И. Результат вычисляется так:
-     * 1. [BranchResult.NULL] если все ветви такие
-     * 2. [BranchResult.CORRECT] если все ветви либо [BranchResult.CORRECT] либо [BranchResult.NULL]
-     * 3. [BranchResult.ERROR] иначе
+     * 1. [BranchResult.NULL] если хотя бы одна ветвь такая или ветвей нет
+     * 2. [BranchResult.ERROR] если хотя бы одна ветвь такая
+     * 3. [BranchResult.CORRECT] иначе
      */
     AND {
         override val necessaryContinuationOutcomes = setOf(BranchResult.CORRECT)
