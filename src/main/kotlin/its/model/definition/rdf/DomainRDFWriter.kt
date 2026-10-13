@@ -98,7 +98,7 @@ class DomainRDFWriter private constructor(
     private fun MetaOwner.writeMetadata(ownerResource: Resource) {
         metadata.entries.forEach { (locCode, propertyName, value) ->
             val metaName = (locCode?.plus("_") ?: "") + propertyName
-            return writeProperty(ownerResource, metaName, value)
+            writeProperty(ownerResource, metaName, value)
         }
     }
 
