@@ -21,6 +21,7 @@ class BranchResultRedirectingNode(
         results: DecisionTreeValidationResults,
         context: DecisionTreeContext
     ) {
+        call.validateForDecisionTree(domainModel, results, context)
         actionExpr?.also { it.validateForDecisionTree(domainModel, results, context) }
         results.checkValid(call.procedure is SubinterpreterProcedure, "Branch result must be redirecting only with subinterpreter procedures")
     }

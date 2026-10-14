@@ -3,6 +3,7 @@ package its.model.nodes
 import its.model.TypedVariable
 import its.model.definition.types.ObjectType
 import its.model.definition.types.Type
+import its.model.expressions.operators.CallProcedure
 
 /**
  * Контекст проверки деревьев решений
@@ -11,6 +12,12 @@ import its.model.definition.types.Type
 open class DecisionTreeContext(
     open val variableTypes: MutableMap<String, Type<*>> = mutableMapOf(),
 ) {
+    /**
+     * Вызовы процедур внутри выражений дерева, встреченные при проверке.
+     * Вызовы-инструкции ([ProcedureCallNode]) сюда не входят - они являются узлами дерева
+     */
+    val expressionProcedureCalls: MutableList<CallProcedure> = mutableListOf()
+
     /**
      * Добавить объектную ([ObjectType]) переменную
      */

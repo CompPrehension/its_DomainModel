@@ -8,7 +8,9 @@ import its.model.definition.compat.DomainDictionariesRDFBuilder
 import its.model.definition.loqi.DomainLoqiBuilder
 import its.model.definition.loqi.DomainLoqiWriter
 import its.model.definition.loqi.TreeLoqiBuilder
+import its.model.expressions.operators.CallProcedure
 import its.model.nodes.DecisionTree
+import its.model.nodes.DecisionTreeContext
 import its.model.nodes.DecisionTreeElement
 import its.model.nodes.InvalidDecisionTreeException
 import its.model.nodes.ProcedureCallNode
@@ -187,31 +189,50 @@ class DomainSolvingModel(
      */
     fun validate(debug: Boolean = false): DomainSolvingModel {
         domainModel.validateAndThrow()
+        //Вызовы процедур в выражениях деревьев не зависят от модели, поэтому достаточно результата последней проверки
+        val expressionProcedureCalls = mutableMapOf<String, List<CallProcedure>>()
         tagsData.keys.forEach { tagName ->
             val mergedTagDomain = getMergedTagDomain(tagName)
             mergedTagDomain.validateAndThrow() //Деревья должны корректно работать со всеми теговыми моделями
             validateLeafClassesDefineAllValues(mergedTagDomain, tagName)
-            decisionTrees.values.forEach { it.validate(mergedTagDomain) }
+            validateDecisionTrees(mergedTagDomain, expressionProcedureCalls)
         }
         if(tagsData.isEmpty()){
             validateLeafClassesDefineAllValues(domainModel, null)
-            decisionTrees.values.forEach { it.validate(domainModel) }
+            validateDecisionTrees(domainModel, expressionProcedureCalls)
         }
         if (!debug) {
-            decisionTrees.values.forEach { tree ->
-                val debugNodes = tree.allNodes()
+            decisionTrees.forEach { (treeName, tree) ->
+                val debugProcedures = tree.allNodes()
                     .filterIsInstance<ProcedureCallNode>()
-                    .filter { it.procedure.isDebug() }
+                    .map { it.procedure }
+                    .plus(expressionProcedureCalls[treeName].orEmpty().map { it.procedure })
+                    .filter { it.isDebug() }
                     .toList()
-                if (debugNodes.isNotEmpty()) {
+                if (debugProcedures.isNotEmpty()) {
                     throw InvalidDecisionTreeException(
                         "Decision tree contains debug-namespace procedures but debug=false: " +
-                            debugNodes.joinToString { it.procedure.qualifiedName }
+                            debugProcedures.joinToString { it.qualifiedName }
                     )
                 }
             }
         }
         return this
+    }
+
+    /**
+     * Провалидировать все деревья решений относительно модели [domain],
+     * запомнив для каждого дерева вызовы процедур в его выражениях
+     */
+    private fun validateDecisionTrees(
+        domain: DomainModel,
+        expressionProcedureCalls: MutableMap<String, List<CallProcedure>>,
+    ) {
+        decisionTrees.forEach { (treeName, tree) ->
+            val context = DecisionTreeContext()
+            tree.validate(domain, context)
+            expressionProcedureCalls[treeName] = context.expressionProcedureCalls
+        }
     }
 
     // Объекты появляются только в ситуациях, поэтому в модели конкретным считается лист иерархии классов.

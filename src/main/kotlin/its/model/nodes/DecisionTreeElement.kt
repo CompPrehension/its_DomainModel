@@ -8,6 +8,7 @@ import its.model.definition.MetaOwner
 import its.model.definition.types.Type
 import its.model.expressions.ExpressionContext
 import its.model.expressions.Operator
+import its.model.expressions.operators.CallProcedure
 import kotlin.properties.Delegates
 
 /**
@@ -106,7 +107,13 @@ sealed class DecisionTreeElement : MetaOwner, Describable {
             ExpressionContext.from(context).apply { withVariables.forEach { add(it) } }
         )
         results.addAll(exprResults)
+        collectProcedureCalls(context.expressionProcedureCalls)
         return exprType
+    }
+
+    private fun Operator.collectProcedureCalls(calls: MutableList<CallProcedure>) {
+        if (this is CallProcedure) calls.add(this)
+        children.forEach { it.collectProcedureCalls(calls) }
     }
 
     /**
