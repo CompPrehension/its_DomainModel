@@ -41,6 +41,8 @@ import kotlin.io.path.reader
         DiscoverTreeCommand::class,
         DictToLoqiCommand::class,
         ValidateDomainLoqiCommand::class,
+        MergeDomainLoqiCommand::class,
+        SubtractDomainLoqiCommand::class,
         DomainToRdfCommand::class,
         RdfToDomainLoqiCommand::class,
     ],
