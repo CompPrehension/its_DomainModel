@@ -9,7 +9,7 @@ treeDeclHelpers: metaDecl
 
 fullExp : exp EOF;
 
-model : topDecl+ EOF
+model : topDecl* EOF
       ;
 
 topDecl : classDecl

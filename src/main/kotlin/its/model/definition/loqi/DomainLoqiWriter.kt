@@ -79,7 +79,7 @@ class DomainLoqiWriter private constructor(
     }
 
     private fun writeClassSection() {
-        if (domainModel.classes.isEmpty()) return
+        if (domainModel.classes.isEmpty() && domainModel.enums.isEmpty()) return
         writeCommentDelimiter("static (class) section")
         domainModel.enums.sortedBy { it.name }.forEach {
             it.writeEnum()

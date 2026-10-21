@@ -41,6 +41,7 @@ class EnumDef(
 
     override fun subtract(other: EnumDef) {
         if (!this.mergeEquals(other)) return
+        super.subtract(other)
         values.subtract(other.values)
     }
 
