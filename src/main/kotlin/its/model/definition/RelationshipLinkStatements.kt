@@ -87,12 +87,13 @@ class RelationshipLinkStatement(
         if (owner != other.owner) return false
         if (relationshipName != other.relationshipName) return false
         if (objectNames != other.objectNames) return false
+        if (paramsValues != other.paramsValues) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        return Objects.hash(owner, relationshipName, objectNames)
+        return Objects.hash(owner, relationshipName, objectNames, paramsValues)
     }
 
     val relationship: RelationshipDef
@@ -122,7 +123,7 @@ class RelationshipLinkStatements(owner: ObjectDef) : Statements<ObjectDef, Relat
 
 
     override fun addToInner(statement: RelationshipLinkStatement) {
-        list.add(statement)
+        if (!list.contains(statement)) list.add(statement)
     }
 
     override fun removeElement(element: Any?): Boolean {
